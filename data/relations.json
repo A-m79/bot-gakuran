@@ -1,0 +1,26 @@
+{
+  "messageId": "1522913690805080176",
+  "entries": [
+    {
+      "nom": "Gang test",
+      "type": "allié",
+      "note": "Ce sont nos alliés les plus importants, merci de les aider a tout pris",
+      "addedBy": "vaultalone",
+      "addedAt": "2026-07-04T10:35:18.932Z"
+    },
+    {
+      "nom": "2e gang test",
+      "type": "neutre",
+      "note": "Relation neutre, ne pas les attaquer sauf si ils commencent",
+      "addedBy": "vaultalone",
+      "addedAt": "2026-07-04T10:35:39.186Z"
+    },
+    {
+      "nom": "3e gang test",
+      "type": "ennemi",
+      "note": "Actuellement dans nos KOS",
+      "addedBy": "vaultalone",
+      "addedAt": "2026-07-04T10:36:00.357Z"
+    }
+  ]
+}
