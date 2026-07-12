@@ -12,7 +12,8 @@ module.exports = {
         .addStringOption(opt => opt.setName('option2').setDescription('Option 2').setRequired(true))
         .addStringOption(opt => opt.setName('option3').setDescription('Option 3 (optionnel)').setRequired(false))
         .addStringOption(opt => opt.setName('option4').setDescription('Option 4 (optionnel)').setRequired(false))
-        .addStringOption(opt => opt.setName('option5').setDescription('Option 5 (optionnel)').setRequired(false)),
+        .addStringOption(opt => opt.setName('option5').setDescription('Option 5 (optionnel)').setRequired(false))
+        .addStringOption(opt => opt.setName('ping').setDescription('Rôle à mentionner (optionnel, ex: @everyone)').setRequired(false)),
 
     async execute(interaction) {
         await interaction.deferReply();
@@ -21,7 +22,8 @@ module.exports = {
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const question = interaction.options.getString('question');
-        const options = [
+        const ping     = interaction.options.getString('ping') || '';
+        const options  = [
             interaction.options.getString('option1'),
             interaction.options.getString('option2'),
             interaction.options.getString('option3'),
@@ -33,7 +35,7 @@ module.exports = {
         const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
         const embed = new EmbedBuilder()
-            .setTitle(`📊 SONDAGE OFFICIEL`)
+            .setTitle('📊 SONDAGE OFFICIEL')
             .setDescription(`**${question}**\n\n${optionsText}`)
             .setColor('#4A90D9')
             .setThumbnail('attachment://logo.png')
@@ -44,9 +46,13 @@ module.exports = {
             .setFooter({ text: 'Gakuran Gang • Votez en réagissant ci-dessous' })
             .setTimestamp();
 
-        await interaction.editReply({ embeds: [embed], files: [logo] });
+        await interaction.editReply({
+            content: ping ? `📊 **SONDAGE** — ${ping}` : '📊 **SONDAGE OFFICIEL**',
+            embeds: [embed],
+            files: [logo],
+            allowedMentions: { parse: ['roles', 'everyone'] }
+        });
 
-        // Ajouter les réactions
         const msg = await interaction.fetchReply();
         for (let i = 0; i < options.length; i++) {
             await msg.react(EMOJIS[i]);
