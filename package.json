@@ -1,7 +1,7 @@
 {
-  "name": "bot-gakuran",
+  "name": "bot-fukushu",
   "version": "1.0.0",
-  "description": "Bot Discord officiel — Gakuran Gang",
+  "description": "Bot Discord officiel — Fukushū no Seiei",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
