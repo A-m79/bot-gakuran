@@ -21,9 +21,17 @@ module.exports = {
         const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
+        console.log(`[LISTE-SONDAGE] Lecture du fichier à l'emplacement : ${dataFile}`);
         let sondages = [];
         if (fs.existsSync(dataFile)) {
-            try { sondages = JSON.parse(fs.readFileSync(dataFile, 'utf8')); } catch (e) {}
+            try { 
+                sondages = JSON.parse(fs.readFileSync(dataFile, 'utf8')); 
+                console.log(`[LISTE-SONDAGE] Fichier trouvé. Nombre de sondages chargés : ${sondages.length}`);
+            } catch (e) {
+                console.log("[LISTE-SONDAGE] Erreur de lecture du JSON.");
+            }
+        } else {
+            console.log("[LISTE-SONDAGE] Le fichier sondages.json n'existe pas sur le disque.");
         }
 
         if (sondages.length === 0)
@@ -46,7 +54,7 @@ module.exports = {
                 .setDescription(`Sondage créé le **${sondageData.date}** dans <#${sondageData.channelId}>`)
                 .setColor('#4A90D9')
                 .setTimestamp()
-                .setFooter({ text: `Gurenkai • Récupéré par ${interaction.user.username}` });
+                .setFooter({ text: `Fukushū no Seiei • Récupéré par ${interaction.user.username}` });
 
             function truncate(list) {
                 if (list.length === 0) return '*Aucun vote*';
@@ -54,16 +62,13 @@ module.exports = {
                 return str.length > 900 ? str.slice(0, 900) + `\n*... +${list.length - str.slice(0, 900).split('\n').length} autres*` : str;
             }
 
-            // Récupérer dynamiquement toutes les réactions présentes sur le message du sondage
             const reactions = message.reactions.cache;
             
             if (reactions.size === 0) {
                 embed.addFields({ name: "Votes", value: "Personne n'a encore voté !" });
             } else {
                 for (const [emoji, reaction] of reactions) {
-                    // On récupère les utilisateurs ayant mis cette réaction
                     const users = await reaction.users.fetch();
-                    // On filtre pour enlever le bot (pour ne pas fausser le compte)
                     const voters = users.filter(u => !u.bot).map(u => `<@${u.id}>`);
 
                     embed.addFields({

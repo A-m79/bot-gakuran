@@ -1,9 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const path = require('path');
-const fs = require('fs'); // Ajouté pour la gestion du fichier JSON
+const fs = require('fs');
 
 const EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
-const dataFile = path.join(__dirname, '..', 'data', 'sondages.json'); // Chemin de sauvegarde
+const dataFile = path.join(__dirname, '..', 'data', 'sondages.json');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -45,7 +45,7 @@ module.exports = {
                 { name: '─'.repeat(30), value: '\u200B', inline: false },
                 { name: '👮 Créé par', value: `${interaction.user} (${interaction.member.roles.highest.name})`, inline: true },
             )
-            .setFooter({ text: 'Gurenkai • Votez en réagissant ci-dessous' })
+            .setFooter({ text: 'Fukushū no Seiei • Votez en réagissant ci-dessous' })
             .setTimestamp();
 
         await interaction.editReply({
@@ -60,8 +60,9 @@ module.exports = {
             await msg.react(EMOJIS[i]);
         }
 
-        // --- SAUVEGARDE DU SONDAGE DANS LA BASE DE DONNÉES JSON ---
+        // --- SAUVEGARDE ET LOGS DE SÉCURITÉ ---
         try {
+            console.log(`[SONDAGE] Tentative de sauvegarde pour la question : "${question}"`);
             const dataDir = path.dirname(dataFile);
             if (!fs.existsSync(dataDir)) {
                 fs.mkdirSync(dataDir, { recursive: true });
@@ -72,11 +73,11 @@ module.exports = {
                 try { 
                     sondages = JSON.parse(fs.readFileSync(dataFile, 'utf8')); 
                 } catch (e) {
+                    console.log("[SONDAGE] Fichier JSON vide ou corrompu, réinitialisation.");
                     sondages = [];
                 }
             }
 
-            // On ajoute le nouveau sondage
             sondages.push({
                 question: question,
                 channelId: interaction.channelId,
@@ -84,11 +85,10 @@ module.exports = {
                 date: new Date().toLocaleDateString('fr-FR')
             });
 
-            // On réécrit le fichier proprement
             fs.writeFileSync(dataFile, JSON.stringify(sondages, null, 4), 'utf8');
+            console.log(`[SONDAGE] ✅ Sauvegarde réussie ! Total enregistré : ${sondages.length}`);
         } catch (err) {
-            console.error('[ERREUR SAUVEGARDE SONDAGE]', err);
+            console.error('[SONDAGE] ❌ Erreur lors de l\'écriture du fichier :', err);
         }
-        // ---------------------------------------------------------
     }
 };
