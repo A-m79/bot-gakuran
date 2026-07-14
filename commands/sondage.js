@@ -1,7 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const path = require('path');
+const fs = require('fs'); // Ajouté pour la gestion du fichier JSON
 
 const EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+const dataFile = path.join(__dirname, '..', 'data', 'sondages.json'); // Chemin de sauvegarde
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -43,7 +45,7 @@ module.exports = {
                 { name: '─'.repeat(30), value: '\u200B', inline: false },
                 { name: '👮 Créé par', value: `${interaction.user} (${interaction.member.roles.highest.name})`, inline: true },
             )
-            .setFooter({ text: 'Fukushū no Seiei • Votez en réagissant ci-dessous' })
+            .setFooter({ text: 'Gurenkai • Votez en réagissant ci-dessous' })
             .setTimestamp();
 
         await interaction.editReply({
@@ -57,5 +59,36 @@ module.exports = {
         for (let i = 0; i < options.length; i++) {
             await msg.react(EMOJIS[i]);
         }
+
+        // --- SAUVEGARDE DU SONDAGE DANS LA BASE DE DONNÉES JSON ---
+        try {
+            const dataDir = path.dirname(dataFile);
+            if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+            }
+
+            let sondages = [];
+            if (fs.existsSync(dataFile)) {
+                try { 
+                    sondages = JSON.parse(fs.readFileSync(dataFile, 'utf8')); 
+                } catch (e) {
+                    sondages = [];
+                }
+            }
+
+            // On ajoute le nouveau sondage
+            sondages.push({
+                question: question,
+                channelId: interaction.channelId,
+                messageId: msg.id,
+                date: new Date().toLocaleDateString('fr-FR')
+            });
+
+            // On réécrit le fichier proprement
+            fs.writeFileSync(dataFile, JSON.stringify(sondages, null, 4), 'utf8');
+        } catch (err) {
+            console.error('[ERREUR SAUVEGARDE SONDAGE]', err);
+        }
+        // ---------------------------------------------------------
     }
 };
