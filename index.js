@@ -200,8 +200,10 @@ client.on('interactionCreate', async interaction => {
         return; // On arrête ici si c'était un clic de bouton
     }
 
-    // 3️⃣ GESTION DE LA SOUMISSION DU FORMULAIRE (MODAL)
+    // 3️⃣ GESTION DE LA SOUMISSION DES FORMULAIRES (MODALS)
     if (interaction.isModalSubmit()) {
+        
+        // --- FORMULAIRE : FICHE INFO ---
         if (interaction.customId === 'soumettre_fiche_modal') {
             const { EmbedBuilder } = require('discord.js');
 
@@ -210,7 +212,6 @@ client.on('interactionCreate', async interaction => {
             const tel = interaction.fields.getTextInputValue('fiche_tel');
             const photo = interaction.fields.getTextInputValue('fiche_photo') || '';
 
-            // Utilise l'ID du .env, et s'il manque, prend ton ID de salon par défaut
             const destChannelId = process.env.FICHE_CHANNEL_ID || '1526596000314294453';
             const destChannel = interaction.guild.channels.cache.get(destChannelId);
 
@@ -223,7 +224,7 @@ client.on('interactionCreate', async interaction => {
 
             const embedFiche = new EmbedBuilder()
                 .setTitle(`👤 FICHE D'IDENTITÉ — ${nom.toUpperCase()}`)
-                .setColor('#FF2A7A') // Le beau rose/rouge Gurenkai 🐉
+                .setColor('#FF2A7A')
                 .addFields(
                     { name: '👤 Nom & Prénom IG', value: `\`${nom}\``, inline: true },
                     { name: '📞 Téléphone', value: `\`${tel}\``, inline: true },
@@ -252,6 +253,57 @@ client.on('interactionCreate', async interaction => {
                 });
             }
         }
+
+        // --- FORMULAIRE : CRÉATION DE L'EMBED ---
+        if (interaction.customId === 'embed_builder_modal') {
+            const { EmbedBuilder } = require('discord.js');
+
+            const titre = interaction.fields.getTextInputValue('embed_titre');
+            const message = interaction.fields.getTextInputValue('embed_message');
+            let couleur = interaction.fields.getTextInputValue('embed_couleur').trim() || '#FF2A7A';
+            const image = interaction.fields.getTextInputValue('embed_image') || '';
+            const miniature = interaction.fields.getTextInputValue('embed_miniature') || '';
+
+            // Petite sécurité pour le format du code couleur Hex
+            if (couleur && !couleur.startsWith('#')) {
+                couleur = '#' + couleur;
+            }
+            if (!/^#[0-9A-F]{6}$/i.test(couleur)) {
+                couleur = '#FF2A7A'; // Retour à la couleur Gurenkai si le code hex est invalide
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(couleur)
+                .setDescription(message)
+                .setFooter({ 
+                    text: `Annonce publiée par ${interaction.user.username}`, 
+                    iconURL: interaction.user.displayAvatarURL({ dynamic: true }) 
+                })
+                .setTimestamp();
+
+            if (titre) {
+                embed.setTitle(titre);
+            }
+
+            if (image && (image.startsWith('http://') || image.startsWith('https://'))) {
+                embed.setImage(image);
+            }
+            if (miniature && (miniature.startsWith('http://') || miniature.startsWith('https://'))) {
+                embed.setThumbnail(miniature);
+            }
+
+            try {
+                // Envoie directement l'embed dans le salon où la commande a été lancée
+                await interaction.channel.send({ embeds: [embed] });
+                
+                // Réponse éphémère pour confirmer que c'est fait
+                await interaction.reply({ content: '✅ Embed publié avec succès !', ephemeral: true });
+            } catch (err) {
+                console.error('[ERREUR CREATION EMBED]', err);
+                await interaction.reply({ content: '❌ Impossible d\'envoyer l\'embed dans ce salon.', ephemeral: true });
+            }
+        }
+        
         return;
     }
 });
