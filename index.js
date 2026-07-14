@@ -169,7 +169,7 @@ client.on('interactionCreate', async interaction => {
 
             const styleInput = new TextInputBuilder()
                 .setCustomId('fiche_style')
-                .setLabel('Votre style de combat / Toutes autre info utile sur vous')
+                .setLabel('Style de combat & autres infos')
                 .setPlaceholder('Décrivez votre style ou rôle (ex: Gakuran noir, pilote...)')
                 .setStyle(TextInputStyle.Paragraph)
                 .setRequired(true);
