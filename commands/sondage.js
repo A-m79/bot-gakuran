@@ -18,7 +18,7 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply();
 
-        const aLeGrade = interaction.member.roles.cache.some(r => r.id === process.env.CHIEF_ROLE_ID);
+        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const question = interaction.options.getString('question');
@@ -43,7 +43,7 @@ module.exports = {
                 { name: '─'.repeat(30), value: '\u200B', inline: false },
                 { name: '👮 Créé par', value: `${interaction.user} (${interaction.member.roles.highest.name})`, inline: true },
             )
-            .setFooter({ text: 'Gakuran Gang • Votez en réagissant ci-dessous' })
+            .setFooter({ text: 'Fukushū no Seiei • Votez en réagissant ci-dessous' })
             .setTimestamp();
 
         await interaction.editReply({

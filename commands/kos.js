@@ -12,10 +12,10 @@ function save(data) { fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
 
 function buildEmbed(entries) {
     const embed = new EmbedBuilder()
-        .setTitle('🎯 KILL ON SIGHT — GAKURAN')
+        .setTitle('🎯 KILL ON SIGHT — FUKUSHŪ NO SEIEI')
         .setColor('#CC0000')
         .setThumbnail('attachment://logo.png')
-        .setFooter({ text: `Gakuran Gang • ${entries.length} cible(s)` })
+        .setFooter({ text: `Fukushū no Seiei • ${entries.length} cible(s)` })
         .setTimestamp();
 
     embed.setDescription(entries.length === 0
@@ -44,7 +44,7 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        const aLeGrade = interaction.member.roles.cache.some(r => r.id === process.env.CHIEF_ROLE_ID);
+        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const sub  = interaction.options.getSubcommand();

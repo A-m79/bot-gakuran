@@ -18,7 +18,7 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        const aLeGrade = interaction.member.roles.cache.some(r => r.id === process.env.CHIEF_ROLE_ID);
+        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         let events = [];
@@ -69,7 +69,7 @@ module.exports = {
                     { name: `❌ Absents (${absents.length})`,   value: truncate(absents),  inline: true },
                     { name: `❓ Peut-être (${maybes.length})`,  value: truncate(maybes),   inline: true },
                 )
-                .setFooter({ text: `Gakuran Gang • Événement du ${eventData.date} — Récupéré par ${interaction.user.username}` })
+                .setFooter({ text: `Fukushū no Seiei • Événement du ${eventData.date} — Récupéré par ${interaction.user.username}` })
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });

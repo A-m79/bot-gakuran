@@ -19,10 +19,10 @@ const TYPE_CONFIG = {
 
 function buildEmbed(entries) {
     const embed = new EmbedBuilder()
-        .setTitle('🤝 RELATIONS DIPLOMATIQUES — GAKURAN')
+        .setTitle('🤝 RELATIONS DIPLOMATIQUES — FUKUSHŪ NO SEIEI')
         .setColor('#4A90D9')
         .setThumbnail('attachment://logo.png')
-        .setFooter({ text: 'Gakuran Gang • Diplomatie' })
+        .setFooter({ text: 'Fukushū no Seiei • Diplomatie' })
         .setTimestamp();
 
     if (entries.length === 0) { embed.setDescription('> Aucune relation enregistrée.'); return embed; }
@@ -67,7 +67,7 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        const aLeGrade = interaction.member.roles.cache.some(r => r.id === process.env.CHIEF_ROLE_ID);
+        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const sub  = interaction.options.getSubcommand();

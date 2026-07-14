@@ -27,19 +27,19 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        const aLeGrade = interaction.member.roles.cache.some(r => r.id === process.env.CHIEF_ROLE_ID);
+        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const sub = interaction.options.getSubcommand();
 
         if (sub === 'lancer') {
             const objectif    = interaction.options.getInteger('objectif');
-            const messagePerso = interaction.options.getString('message') || 'Montrez votre présence et votre loyauté au sein du Gakuran !';
+            const messagePerso = interaction.options.getString('message') || 'Montrez votre présence et votre loyauté au sein du Fukushū no Seiei !';
 
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
             const embed = new EmbedBuilder()
-                .setTitle('📋 ACTIVITY CHECK — GAKURAN')
+                .setTitle('📋 ACTIVITY CHECK — FUKUSHŪ NO SEIEI')
                 .setDescription(`>>> ${messagePerso}`)
                 .setColor('#FFD700')
                 .setThumbnail('attachment://logo.png')
@@ -49,7 +49,7 @@ module.exports = {
                     { name: '🎯 Objectif', value: `**${objectif}** réactions`, inline: true },
                     { name: '📊 Statut', value: '⏳ En cours...', inline: true },
                 )
-                .setFooter({ text: 'Gakuran Gang • Activity Check' })
+                .setFooter({ text: 'Fukushū no Seiei • Activity Check' })
                 .setTimestamp();
 
             const checkChannel = await interaction.client.channels.fetch(process.env.ACTIVITY_CHECK_CHANNEL_ID);

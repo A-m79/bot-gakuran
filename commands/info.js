@@ -9,7 +9,7 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply();
 
-        const aLeGrade = interaction.member.roles.cache.some(r => r.id === process.env.CHIEF_ROLE_ID);
+        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const user = interaction.options.getUser('membre');
@@ -65,7 +65,7 @@ module.exports = {
                 { name: '🤖 Bot',               value: user.bot ? '✅ Oui' : '❌ Non',   inline: true },
                 { name: '💎 Booster',           value: boostStr,                          inline: true },
             )
-            .setFooter({ text: `Gakuran Gang • Demandé par ${interaction.user.username}` })
+            .setFooter({ text: `Fukushū no Seiei • Demandé par ${interaction.user.username}` })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });

@@ -38,7 +38,7 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply();
 
-        const aLeGrade = interaction.member.roles.cache.some(r => r.id === process.env.CHIEF_ROLE_ID);
+        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const titre       = interaction.options.getString('titre');
@@ -67,7 +67,7 @@ module.exports = {
                 { name: '─'.repeat(30), value: '\u200B',                                                            inline: false },
                 { name: '📩 Présence',     value: '✅ Présent   ❌ Absent   ❓ Peut-être',                           inline: false },
             )
-            .setFooter({ text: 'Gakuran Gang • Événement officiel' })
+            .setFooter({ text: 'Fukushū no Seiei • Événement officiel' })
             .setTimestamp();
 
         await interaction.editReply({
