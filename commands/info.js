@@ -65,7 +65,7 @@ module.exports = {
                 { name: '🤖 Bot',               value: user.bot ? '✅ Oui' : '❌ Non',   inline: true },
                 { name: '💎 Booster',           value: boostStr,                          inline: true },
             )
-            .setFooter({ text: `Fukushū no Seiei • Demandé par ${interaction.user.username}` })
+            .setFooter({ text: `Gurenkai • Demandé par ${interaction.user.username}` })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });

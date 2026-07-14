@@ -67,7 +67,7 @@ module.exports = {
                 { name: '─'.repeat(30), value: '\u200B',                                                            inline: false },
                 { name: '📩 Présence',     value: '✅ Présent   ❌ Absent   ❓ Peut-être',                           inline: false },
             )
-            .setFooter({ text: 'Fukushū no Seiei • Événement officiel' })
+            .setFooter({ text: 'Gurenkai • Événement officiel' })
             .setTimestamp();
 
         await interaction.editReply({

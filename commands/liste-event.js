@@ -69,7 +69,7 @@ module.exports = {
                     { name: `❌ Absents (${absents.length})`,   value: truncate(absents),  inline: true },
                     { name: `❓ Peut-être (${maybes.length})`,  value: truncate(maybes),   inline: true },
                 )
-                .setFooter({ text: `Fukushū no Seiei • Événement du ${eventData.date} — Récupéré par ${interaction.user.username}` })
+                .setFooter({ text: `Gurenkai • Événement du ${eventData.date} — Récupéré par ${interaction.user.username}` })
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });

@@ -54,7 +54,7 @@ module.exports = {
                 .setDescription(`Sondage créé le **${sondageData.date}** dans <#${sondageData.channelId}>`)
                 .setColor('#4A90D9')
                 .setTimestamp()
-                .setFooter({ text: `Fukushū no Seiei • Récupéré par ${interaction.user.username}` });
+                .setFooter({ text: `Gurenkai • Récupéré par ${interaction.user.username}` });
 
             function truncate(list) {
                 if (list.length === 0) return '*Aucun vote*';

@@ -49,7 +49,7 @@ module.exports = {
                     { name: '🎯 Objectif', value: `**${objectif}** réactions`, inline: true },
                     { name: '📊 Statut', value: '⏳ En cours...', inline: true },
                 )
-                .setFooter({ text: 'Fukushū no Seiei • Activity Check' })
+                .setFooter({ text: 'Gurenkai • Activity Check' })
                 .setTimestamp();
 
             const checkChannel = await interaction.client.channels.fetch(process.env.ACTIVITY_CHECK_CHANNEL_ID);

@@ -19,10 +19,10 @@ const TYPE_CONFIG = {
 
 function buildEmbed(entries) {
     const embed = new EmbedBuilder()
-        .setTitle('🤝 RELATIONS DIPLOMATIQUES — FUKUSHŪ NO SEIEI')
+        .setTitle('🤝 RELATIONS DIPLOMATIQUES — GurenkaiI')
         .setColor('#4A90D9')
         .setThumbnail('attachment://logo.png')
-        .setFooter({ text: 'Fukushū no Seiei • Diplomatie' })
+        .setFooter({ text: 'Gurenkai • Diplomatie' })
         .setTimestamp();
 
     if (entries.length === 0) { embed.setDescription('> Aucune relation enregistrée.'); return embed; }

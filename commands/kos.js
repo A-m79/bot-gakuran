@@ -12,10 +12,10 @@ function save(data) { fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
 
 function buildEmbed(entries) {
     const embed = new EmbedBuilder()
-        .setTitle('🎯 KILL ON SIGHT — FUKUSHŪ NO SEIEI')
+        .setTitle('🎯 KILL ON SIGHT — Gurenkai')
         .setColor('#CC0000')
         .setThumbnail('attachment://logo.png')
-        .setFooter({ text: `Fukushū no Seiei • ${entries.length} cible(s)` })
+        .setFooter({ text: `Gurenkai • ${entries.length} cible(s)` })
         .setTimestamp();
 
     embed.setDescription(entries.length === 0

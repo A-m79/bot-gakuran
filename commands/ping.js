@@ -20,7 +20,7 @@ module.exports = {
                 { name: '⚡ Latence bot', value: `**${latency}ms**`, inline: true },
                 { name: '🌐 Latence API', value: `**${apiLatency}ms**`, inline: true },
             )
-            .setFooter({ text: 'Fukushū no Seiei' })
+            .setFooter({ text: 'Gurenkai' })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });

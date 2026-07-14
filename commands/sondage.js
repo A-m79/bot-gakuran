@@ -45,7 +45,7 @@ module.exports = {
                 { name: '─'.repeat(30), value: '\u200B', inline: false },
                 { name: '👮 Créé par', value: `${interaction.user} (${interaction.member.roles.highest.name})`, inline: true },
             )
-            .setFooter({ text: 'Fukushū no Seiei • Votez en réagissant ci-dessous' })
+            .setFooter({ text: 'Gurenkai • Votez en réagissant ci-dessous' })
             .setTimestamp();
 
         await interaction.editReply({
