@@ -34,12 +34,12 @@ module.exports = {
 
         if (sub === 'lancer') {
             const objectif    = interaction.options.getInteger('objectif');
-            const messagePerso = interaction.options.getString('message') || 'Montrez votre présence et votre loyauté au sein du Fukushū no Seiei !';
+            const messagePerso = interaction.options.getString('message') || 'Montrez votre présence et votre loyauté au sein du Gurenkai !';
 
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
             const embed = new EmbedBuilder()
-                .setTitle('📋 ACTIVITY CHECK — FUKUSHŪ NO SEIEI')
+                .setTitle('📋 ACTIVITY CHECK — Gurenkai')
                 .setDescription(`>>> ${messagePerso}`)
                 .setColor('#FFD700')
                 .setThumbnail('attachment://logo.png')
