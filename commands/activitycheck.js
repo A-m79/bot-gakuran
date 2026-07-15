@@ -71,11 +71,56 @@ module.exports = {
 
         if (sub === 'terminer') {
             const checks = loadChecks();
-            const active  = checks.find(c => !c.reached);
+            const active = checks.find(c => !c.reached);
             if (!active) return interaction.editReply({ content: '❌ Aucun activity check en cours.' });
-            active.reached = true;
-            fs.writeFileSync(dataFile, JSON.stringify(checks, null, 2));
-            await interaction.editReply({ content: '✅ Activity check terminé manuellement.' });
+
+            try {
+                const channel = await interaction.client.channels.fetch(active.channelId);
+                const message = await channel.messages.fetch(active.messageId);
+
+                // Récupération et calcul des réactions
+                const reaction = message.reactions.cache.get('✅');
+                let count = 0;
+                if (reaction) {
+                    // On retire 1 si le bot a lui-même réagi au départ
+                    count = reaction.me ? reaction.count - 1 : reaction.count;
+                }
+
+                // 1. Modification visuelle de l'embed d'origine
+                const oldEmbed = message.embeds[0];
+                if (oldEmbed) {
+                    const finishedEmbed = EmbedBuilder.from(oldEmbed)
+                        .setColor('#00FF00') // Passe au vert
+                        .setFields(
+                            { name: '─'.repeat(32), value: '\u200B', inline: false },
+                            { name: '👇 Comment participer', value: '~~Réagis avec ✅ ci-dessous pour confirmer ta présence.~~ (Terminé)', inline: false },
+                            { name: '🎯 Objectif', value: `**${active.objectif}** réactions (Atteint : **${count}** ✅)`, inline: true },
+                            { name: '📊 Statut', value: '✅ **Terminé !**', inline: true }
+                        );
+
+                    await message.edit({ embeds: [finishedEmbed] });
+                }
+
+                // 2. Message de félicitations dans le salon
+                await channel.send({
+                    content: `🎉 **L'activity check est désormais terminé !**\nMerci aux **${count}** membres actifs d'avoir répondu présent. ⛩️🔥`
+                });
+
+                // 3. Clôture dans le fichier JSON
+                active.reached = true;
+                fs.writeFileSync(dataFile, JSON.stringify(checks, null, 2));
+
+                await interaction.editReply({ content: `✅ Activity check clôturé avec succès ! (**${count}** réactions enregistrées).` });
+
+            } catch (error) {
+                console.error('[ERREUR CLÔTURE MANUELLE]', error);
+                
+                // Si le message d'origine a été supprimé, on ferme quand même dans la DB pour ne pas bloquer le bot
+                active.reached = true;
+                fs.writeFileSync(dataFile, JSON.stringify(checks, null, 2));
+                
+                await interaction.editReply({ content: "⚠️ Impossible de modifier le message d'origine (supprimé ?), mais l'activity check a bien été désactivé dans la base de données." });
+            }
         }
     }
 };
