@@ -94,10 +94,10 @@ module.exports = {
                 .setTitle('🏆 CLASSEMENT OFFICIEL GURENKAI — RÈGLEMENT')
                 .setColor('#FFD700')
                 .setThumbnail('attachment://logo.png')
-                .setDescription('>>> **Système mis en place par Tacos votre goat**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**. C\'est un outil de prestige et de reconnaissance interne — pas un simple classement PvP random, chaque combat doit être encadré et respecté.')
+                .setDescription('>>> **Système mis en place par Tacos votre goat**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**. C\'est un  classement PvP, tout le monde est pas concerné, chaque combat doit être encadré et la décision doit etre respecté.')
                 .addFields(
                     { name: '📥 1. COMMENT REJOINDRE LE CLASSEMENT', value: '• Pour intégrer le LB, tu dois DM un **Rank Manager** pour être ajouté à la file d\'attente des challengers.\n• Tu peux directement défier le **No.10** pour tenter de prendre sa place.\n• Une fois dans le classement, tu peux sauter des rangs pour défier qui tu veux, jusqu\'à ce que tu atteignes le **Top 5**.' },
-                    { name: '👑 2. LE SAINT TOP 5', value: '• À partir du Top 5, il n\'est plus possible de sauter des rangs : **tu ne peux défier que la place juste au-dessus de toi**.\n• Tu peux aussi défier une place en dessous de toi (pour le fun / garder la forme) : si l\'adversaire gagne, il prend ta place.' },
+                    { name: '👑 2. LE SAINT TOP 5', value: '• À partir du Top 5, il n\'est plus possible de sauter des rangs : **tu ne peux défier que la place juste au-dessus de toi**.\n• Tu peux aussi défier une place en dessous de toi (pour le fun / garder la forme) : Mais si l\'adversaire gagne, il prend ta place.' },
                     { name: '🛡️ 3. GRÂCE (Protection après défense)', value: '• Si tu défends ta place avec succès (tu gagnes contre un challenger), tu obtiens une Grâce : **tu ne peux pas être défié pendant 24h**.' },
                     { name: '👤 4. CONDITIONS D\'ÉLIGIBILITÉ', value: '• Être un membre actif du gang Gurenkai.\n• **Aucun compte alternatif (alt) n\'est autorisé** (un seul compte par joueur).' }
                 );
