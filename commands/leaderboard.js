@@ -117,7 +117,7 @@ module.exports = {
                     { name: '🎮 8. RÈGLES SPÉCIFIQUES AU JEU', value: '• Changer de taille/style en plein combat est interdit.\n• Hack, bug abuse, lag switch = **ban permanent du LB et du gang**.' },
                     { name: '🎥 9. PREUVES', value: '• Tout signalement pour non-respect des règles doit être accompagné d\'une preuve (vidéo/replay).' }
                 )
-                .setFooter({ text: 'Gurenkai • Respect, Discipline, Puissance.' })
+                .setFooter({ text: 'Gurenkai • Respect, fun, et Puissance x) .' })
                 .setTimestamp();
 
             await interaction.channel.send({
