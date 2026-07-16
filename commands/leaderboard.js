@@ -86,7 +86,7 @@ module.exports = {
         const sub = interaction.options.getSubcommand();
         const data = loadLB();
 
-        // ─── 1️⃣ SOUSET-COMMANDE : REGLES (Envoi de tout ton pavé) ───
+        // ─── 1️⃣ SOUS-COMMANDE : REGLES (Texte mis à jour et corrigé !) ───
         if (sub === 'regles') {
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
@@ -94,28 +94,28 @@ module.exports = {
                 .setTitle('🏆 CLASSEMENT OFFICIEL GURENKAI — RÈGLEMENT')
                 .setColor('#FFD700')
                 .setThumbnail('attachment://logo.png')
-                .setDescription('>>> **Système mis en place par Tacos (votre goat)**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**. C\'est un outil de prestige et de reconnaissance interne — pas un simple classement PvP random, chaque combat doit être encadré et respecté.')
+                .setDescription('>>> **Système inspiré du Leaderboard EU de Revengers Dream, adapté pour le gang.**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**. C\'est un outil de prestige et de reconnaissance interne — pas un simple classement PvP random, chaque combat doit être encadré et respecté.')
                 .addFields(
                     { name: '📥 1. COMMENT REJOINDRE LE CLASSEMENT', value: '• Pour intégrer le LB, tu dois DM un **Rank Manager** pour être ajouté à la file d\'attente des challengers.\n• Tu peux directement défier le **No.10** pour tenter de prendre sa place.\n• Une fois dans le classement, tu peux sauter des rangs pour défier qui tu veux, jusqu\'à ce que tu atteignes le **Top 5**.' },
                     { name: '👑 2. LE SAINT TOP 5', value: '• À partir du Top 5, il n\'est plus possible de sauter des rangs : **tu ne peux défier que la place juste au-dessus de toi**.\n• Tu peux aussi défier une place en dessous de toi (pour le fun / garder la forme) : si l\'adversaire gagne, il prend ta place.' },
-                    { name: '🛡️ 3. GRÂCE (Protection après défense)', value: '• Si tu défends ta place avec succès (tu gagne contre un challenger), tu obtiens une Grâce : **tu ne peux pas être défié pendant 24h**.' },
-                    { name: '👤 4. CONDITIONS D\'ÉLIGIBILITÉ', value: '• Être membre actif reconnu du gang Gurenkai.\n• Ancienneté minimum sur le serveur Discord du gang : à définir par les Rank Managers (ex : 2-4 semaines).\n• **Un seul compte par joueur** : les alts sont strictement interdits sous peine de ban du LB.' }
+                    { name: '🛡️ 3. GRÂCE (Protection après défense)', value: '• Si tu défends ta place avec succès (tu gagnes contre un challenger), tu obtiens une Grâce : **tu ne peux pas être défié pendant 24h**.' },
+                    { name: '👤 4. CONDITIONS D\'ÉLIGIBILITÉ', value: '• Être un membre actif du gang Gurenkai.\n• **Aucun compte alternatif (alt) n\'est autorisé** (un seul compte par joueur).' }
                 );
 
             const embed2 = new EmbedBuilder()
                 .setTitle('⚔️ RÈGLES DES COMBATS & CONDUITE')
                 .setColor('#FFD700')
                 .addFields(
-                    { name: '🥊 5. RÈGLES DE DÉROULEMENT DES COMBATS', value: '1️⃣ **Cooldown de 48h** avant de pouvoir redéfier quelqu\'un qui t\'a battu.\n2️⃣ Tu peux combattre **2 personnes différentes maximum par jour**.\n3️⃣ Format de match : **premier à 3 rounds gagnants (FT3)**, pour tous les rangs.\n4️⃣ Le combat doit se dérouler dans le **chat de groupe LB dédié**, jamais en privé.\n5️⃣ Après un défi, l\'adversaire a **1 jour de délai pour accepter**. Passé ce délai, le combat doit être accepté le jour 2, sinon **échange automatique des places**.\n6️⃣ Le No.1 peut aussi être défié (cooldown 48h).' },
-                    { name: '🚫 7. RÈGLES DE CONDUITE DIRECTES', value: '• Casser une règle de match = défaite directe + possible blacklist.\n• Quitter en plein combat = forfait (sauf accord adverse).\n• Inactif sur le LB pendant 1 semaine = blacklist temporaire de 3 jours.\n• Interdiction d\'extorsion, de spam, de toxicité ou de désinformation.\n• **5 forfaits cumulés** = blacklist d\'une semaine.' }
+                    { name: '🥊 5. RÈGLES DE DÉROULEMENT DES COMBATS', value: '• **Cooldown :** Cooldown de 48h avant de pouvoir redéfier quelqu\'un qui t\'a battu.\n• **Limite quotidienne :** Tu peux demander à combattre 2 personnes différentes maximum par jour (selon l\'accord du rank manager).\n• **Format :** Premier à 3 rounds gagnants (FT3), pour tous les rangs.\n• **Lieu & Encadrement :** L\'organisation du combat se déroulera dans un salon dédié, jamais en privé (toujours avec la présence d\'un rank manager).\n• **Délai :** Après un défi, l\'adversaire a 1 jour de délai pour accepter. Passé ce délai, le combat doit être accepté le jour 2, sinon échange automatique des places.\n• **No.1 :** Le No.1 peut aussi être défié (cooldown de 48h).\n\n📌 *Note : Les rank managers ne font pas partie du LB.*' },
+                    { name: '🚫 7. RÈGLES DE CONDUITE DIRECTES', value: '• Non-respect d\'une règle = défaite directe + possible blacklist.\n• Quitter en plein combat = forfait (sauf accord adverse).\n• Inactif sur le LB (= pas de combat pour défendre sa place) pendant 1 semaine = **retrait du LB**.\n• Interdiction d\'extorsion, de spam, de toxicité ou de désinformation.\n• **5 forfaits cumulés** = blacklist du LB d\'une semaine.' }
                 );
 
             const embed3 = new EmbedBuilder()
                 .setTitle('⚙️ RÈGLES SPÉCIFIQUES & LITIGES')
                 .setColor('#FFD700')
                 .addFields(
-                    { name: '🎮 8. RÈGLES SPÉCIFIQUES AU JEU', value: '1️⃣ Changer de stats/skills/style en plein combat interdit.\n2️⃣ Hack, bug abuse, lag switch = ban permanent du LB.\n3️⃣ Objets donnant un bonus de stats interdits.\n4️⃣ Auras/effets cosmétiques donnant un avantage interdits.' },
-                    { name: '🎥 9. PREUVES ET LITIGES', value: '• Tout signalement pour non-respect des règles doit être accompagné d\'une **preuve (vidéo/replay)**.\n• Sans preuve vidéo concernant un litige, les Rank Managers ne modifieront pas le classement. Enregistrez vos combats !' }
+                    { name: '🎮 8. RÈGLES SPÉCIFIQUES AU JEU', value: '• Changer de taille/style en plein combat est interdit.\n• Hack, bug abuse, lag switch = **ban permanent du LB et du gang**.' },
+                    { name: '🎥 9. PREUVES', value: '• Tout signalement pour non-respect des règles doit être accompagné d\'une preuve (vidéo/replay).' }
                 )
                 .setFooter({ text: 'Gurenkai • Respect, Discipline, Puissance.' })
                 .setTimestamp();
@@ -125,7 +125,7 @@ module.exports = {
                 files: [logo]
             });
 
-            return interaction.editReply({ content: '✅ Règlement officiel publié avec succès !' });
+            return interaction.editReply({ content: '✅ Règlement officiel mis à jour et publié !' });
         }
 
         // ─── 2️⃣ SOUS-COMMANDE : SETUP (Pose le classement) ───
@@ -152,7 +152,6 @@ module.exports = {
             const style = interaction.options.getString('style') || 'Physique';
 
             if (!joueur) {
-                // Si pas de joueur -> On remet la place à vide !
                 data.ranks[rang] = { userId: null, style: 'Vide' };
             } else {
                 data.ranks[rang] = { userId: joueur.id, style: style };
@@ -168,7 +167,7 @@ module.exports = {
             return interaction.editReply({ content: messageRetour });
         }
 
-        // ─── 4️⃣ SOUS-COMMANDE : INVERSER (Le swap magique entre deux joueurs) ───
+        // ─── 4️⃣ SOUS-COMMANDE : INVERSER (Le swap de deux joueurs) ───
         if (sub === 'inverser') {
             const j1 = interaction.options.getUser('joueur1');
             const j2 = interaction.options.getUser('joueur2');
@@ -176,7 +175,6 @@ module.exports = {
             let rangJ1 = null;
             let rangJ2 = null;
 
-            // On cherche leurs rangs actuels
             for (const [r, value] of Object.entries(data.ranks)) {
                 if (value.userId === j1.id) rangJ1 = r;
                 if (value.userId === j2.id) rangJ2 = r;
@@ -188,7 +186,6 @@ module.exports = {
                 });
             }
 
-            // Swap des données dans l'objet
             const temp = { ...data.ranks[rangJ1] };
             data.ranks[rangJ1] = { ...data.ranks[rangJ2] };
             data.ranks[rangJ2] = temp;
