@@ -4,7 +4,7 @@ const path = require('path');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('absences')
+        .setName('liste-absences')
         .setDescription('📋 Affiche la liste récapitulative des absences et leur statut'),
 
     async execute(interaction) {
