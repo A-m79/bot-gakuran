@@ -1,98 +1,91 @@
-const { 
-    SlashCommandBuilder, 
-    ModalBuilder, 
-    TextInputBuilder, 
-    TextInputStyle, 
-    ActionRowBuilder, 
-    EmbedBuilder, 
-    AttachmentBuilder 
-} = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const fs = require('fs');
 const path = require('path');
-
-const ABSENCE_CHANNEL_ID = '1530476747622187190';
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('absence')
-        .setDescription('📝 Déclarer une absence officielle au sein du gang'),
+        .setName('absences')
+        .setDescription('Affiche la liste des absences enregistrées et leur statut'),
 
     async execute(interaction) {
-        // 1. Création du formulaire Modal
-        const modal = new ModalBuilder()
-            .setCustomId(`modal_absence_${interaction.user.id}`)
-            .setTitle('📝 Déclaration d\'absence — Gurenkai');
+        const filePath = path.join(__dirname, '..', 'data', 'absences.json');
 
-        const ingameInput = new TextInputBuilder()
-            .setCustomId('absence_ingame')
-            .setLabel('Nom / Prénom en jeu (RP)')
-            .setPlaceholder('Ex: Kenji Sato')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        const durationInput = new TextInputBuilder()
-            .setCustomId('absence_duration')
-            .setLabel('Durée / Dates de l\'absence')
-            .setPlaceholder('Ex: 3 jours (du 25/07 au 28/07)')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        const reasonInput = new TextInputBuilder()
-            .setCustomId('absence_reason')
-            .setLabel('Raison de l\'absence')
-            .setPlaceholder('Ex: Examens, vacances, problème matériel...')
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(ingameInput),
-            new ActionRowBuilder().addComponents(durationInput),
-            new ActionRowBuilder().addComponents(reasonInput)
-        );
-
-        // Afficher le modal à l'utilisateur
-        await interaction.showModal(modal);
-
-        // 2. Attendre la soumission du formulaire (délai de 5 min)
-        try {
-            const submitted = await interaction.awaitModalSubmit({
-                filter: i => i.customId === `modal_absence_${interaction.user.id}`,
-                time: 300000
+        if (!fs.existsSync(filePath)) {
+            return interaction.reply({
+                content: '📂 Aucune absence enregistrée pour le moment.',
+                ephemeral: true
             });
+        }
 
-            await submitted.deferReply({ ephemeral: true });
+        let absences = [];
+        try {
+            absences = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        } catch (e) {
+            return interaction.reply({
+                content: '❌ Erreur lors de la lecture de la base de données des absences.',
+                ephemeral: true
+            });
+        }
 
-            const ingame = submitted.fields.getTextInputValue('absence_ingame');
-            const duration = submitted.fields.getTextInputValue('absence_duration');
-            const reason = submitted.fields.getTextInputValue('absence_reason');
+        if (!Array.isArray(absences) || absences.length === 0) {
+            return interaction.reply({
+                content: '📂 Aucune absence à afficher.',
+                ephemeral: true
+            });
+        }
 
-            // Récupération du salon d'absence
-            const channel = await interaction.client.channels.fetch(ABSENCE_CHANNEL_ID);
-            if (!channel) {
-                return submitted.editReply({ content: '❌ Erreur : Impossible de trouver le salon d\'absences.' });
+        const now = new Date();
+        const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        // Calculateur de statut basé sur la date et la durée
+        const getStatus = (dateDebutStr, dureeJours) => {
+            // Conversion du format DD/MM/YYYY
+            const parts = dateDebutStr.split('/');
+            let startDate;
+            if (parts.length === 3) {
+                startDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            } else {
+                startDate = new Date(dateDebutStr);
             }
 
-            const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
+            const dureeInt = parseInt(dureeJours, 10) || 1;
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + dureeInt);
 
-            const embed = new EmbedBuilder()
-                .setTitle('📋 NOUVELLE ABSENCE')
-                .setColor('#FF9900')
-                .setThumbnail('attachment://logo.png')
-                .addFields(
-                    { name: '👤 Membre Discord', value: `<@${interaction.user.id}> (\`${interaction.user.tag}\`)`, inline: true },
-                    { name: '🎮 Nom RP / En jeu', value: `\`${ingame}\``, inline: true },
-                    { name: '⏳ Durée & Dates', value: `\`${duration}\``, inline: false },
-                    { name: '📝 Raison', value: `>>> ${reason}`, inline: false }
-                )
-                .setFooter({ text: 'Gurenkai • Gestion du Gang' })
-                .setTimestamp();
+            const startMidnight = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+            const endMidnight = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
 
-            await channel.send({ embeds: [embed], files: [logo] });
+            if (nowMidnight < startMidnight) {
+                return { badge: '⏳ À venir', tag: 'AVENIR' };
+            } else if (nowMidnight >= startMidnight && nowMidnight < endMidnight) {
+                return { badge: '🟢 En cours', tag: 'EN_COURS' };
+            } else {
+                return { badge: '🔴 Dépassée / Terminée', tag: 'PASSE' };
+            }
+        };
 
-            return submitted.editReply({ content: '✅ Ta absence a bien été prise en compte !' });
+        const embed = new EmbedBuilder()
+            .setTitle('📋 RECAPITULATIF DES ABSENCES — GURENKAI')
+            .setColor('#3498DB')
+            .setFooter({ text: `Total : ${absences.length} absence(s) au registre` })
+            .setTimestamp();
 
-        } catch (error) {
-            // Si l'utilisateur ferme ou ne remplit pas dans le temps imparti
-            return;
-        }
+        let description = '';
+
+        absences.forEach((abs, index) => {
+            const status = getStatus(abs.dateDebut, abs.duree);
+            
+            description += `**${index + 1}. <@${abs.userId}>**\n`;
+            description += `• **Statut :** ${status.badge}\n`;
+            description += `• **Début :** \`${abs.dateDebut}\` | **Durée :** \`${abs.duree} jour(s)\`\n`;
+            if (abs.raison) {
+                description += `• **Raison :** _${abs.raison}_\n`;
+            }
+            description += '\n';
+        });
+
+        embed.setDescription(description || 'Aucune absence enregistrée.');
+
+        await interaction.reply({ embeds: [embed] });
     }
 };
