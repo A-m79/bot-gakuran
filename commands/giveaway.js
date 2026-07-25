@@ -117,7 +117,7 @@ const giveawayModule = {
             const messageId = interaction.options.getString('message_id');
             const gw = await Giveaway.findOne({ messageId });
             if (!gw) return interaction.editReply({ content: '❌ Giveaway introuvable.' });
-            if (!gw.participants || gw.participants.length === 0) return interaction.editReply({ content: '❌ Aucun participant à reroll.' });
+            if (!gw.participants || gw.participants.length < 2) return interaction.editReply({ content: '❌ Il faut au moins 2 participants pour effectuer un reroll.' });
 
             const channel = await interaction.client.channels.fetch(gw.channelId);
             const winners = [];
@@ -131,7 +131,7 @@ const giveawayModule = {
             const winnersMention = winners.map(id => `<@${id}>`).join(', ');
             await channel.send({ content: `🔄 **Nouveau tirage (Reroll) pour "${gw.prize}" !**\nFélicitations à : ${winnersMention} ! 🎉` });
 
-            return interaction.editReply({ content: '✅ Relance effectué avec succès !' });
+            return interaction.editReply({ content: '✅ Relance effectuée avec succès !' });
         }
     },
 
@@ -145,22 +145,45 @@ const giveawayModule = {
         try {
             const channel = await client.channels.fetch(gw.channelId);
             const message = await channel.messages.fetch(gw.messageId);
+            const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
+            // ❌ ANNULATION SI MOINS DE 2 PARTICIPANTS
+            if (!gw.participants || gw.participants.length < 2) {
+                const cancelledEmbed = new EmbedBuilder()
+                    .setTitle(`❌ GIVEAWAY ANNULÉ : ${gw.prize}`)
+                    .setColor('#ED4245')
+                    .setThumbnail('attachment://logo.png')
+                    .setDescription(`• **Lot :** ${gw.prize}\n• **Organisé par :** <@${gw.hostId}>\n• **Statut :** Annulé (Moins de 2 participants)`)
+                    .setFooter({ text: `${gw.participants ? gw.participants.length : 0} Participant(s) • Gurenkai` })
+                    .setTimestamp();
+
+                const disabledBtn = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('giveaway_cancelled')
+                        .setLabel('❌ Concours Annulé')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true)
+                );
+
+                await message.edit({ embeds: [cancelledEmbed], components: [disabledBtn], files: [logo] });
+                await channel.send({ content: `❌ Le giveaway pour **${gw.prize}** a été annulé faute de participants (moins de 2 participants).` });
+                return;
+            }
+
+            // 🎉 TIRAGE AU SORT NORMAL SI >= 2 PARTICIPANTS
             const winners = [];
-            const pool = [...(gw.participants || [])];
+            const pool = [...gw.participants];
 
             for (let i = 0; i < Math.min(gw.winnersCount, pool.length); i++) {
                 const randIndex = Math.floor(Math.random() * pool.length);
                 winners.push(pool.splice(randIndex, 1)[0]);
             }
 
-            const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
-
             const endEmbed = new EmbedBuilder()
                 .setTitle(`🎉 GIVEAWAY TERMINÉ : ${gw.prize}`)
                 .setColor('#2F3136')
                 .setThumbnail('attachment://logo.png')
-                .setDescription(`• **Lot :** ${gw.prize}\n• **Organisé par :** <@${gw.hostId}>\n• **Gagnant(s) :** ${winners.length > 0 ? winners.map(id => `<@${id}>`).join(', ') : 'Aucun participant'}`)
+                .setDescription(`• **Lot :** ${gw.prize}\n• **Organisé par :** <@${gw.hostId}>\n• **Gagnant(s) :** ${winners.map(id => `<@${id}>`).join(', ')}`)
                 .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` })
                 .setTimestamp();
 
@@ -176,8 +199,6 @@ const giveawayModule = {
 
             if (winners.length > 0) {
                 await channel.send({ content: `🎉 **Félicitations ${winners.map(id => `<@${id}>`).join(', ')} !** Tu as remporté : **${gw.prize}** !` });
-            } else {
-                await channel.send({ content: `❌ Aucun participant n'a rejoint le giveaway pour **${gw.prize}**.` });
             }
         } catch (e) {
             console.error('[ERREUR END GIVEAWAY]', e);
