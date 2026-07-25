@@ -1,29 +1,13 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const fs = require('fs');
 const path = require('path');
-
-const dataFile = path.join(__dirname, '..', 'data', 'leaderboard.json');
-
-// Fonctions pour gérer le JSON
-function loadLB() {
-    if (!fs.existsSync(dataFile)) {
-        const defaultLB = { messageId: null, channelId: null, ranks: {} };
-        for (let i = 1; i <= 10; i++) defaultLB.ranks[i.toString()] = { userId: null, style: 'Vide' };
-        return defaultLB;
-    }
-    return JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-}
-
-function saveLB(data) {
-    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
-}
+const Leaderboard = require('../models/Leaderboard');
 
 // Génération de l'embed visuel du classement
-function buildLBEmbed(ranks) {
+function buildLBEmbed(ranksMap) {
     let leaderboardText = '';
     
     for (let i = 1; i <= 10; i++) {
-        const rankData = ranks[i.toString()] || { userId: null, style: 'Vide' };
+        const rankData = ranksMap.get(i.toString()) || { userId: null, style: 'Vide' };
         
         let emoji = '⚡';
         if (i === 1) emoji = '👑';
@@ -48,6 +32,23 @@ function buildLBEmbed(ranks) {
         .setThumbnail('attachment://logo.png')
         .setFooter({ text: 'Mise à jour automatique • Gurenkai' })
         .setTimestamp();
+}
+
+// Fonction utilitaire pour récupérer ou initialiser le document unique Leaderboard dans MongoDB
+async function getLeaderboardDoc() {
+    let lb = await Leaderboard.findOne();
+    if (!lb) {
+        const defaultRanks = new Map();
+        for (let i = 1; i <= 10; i++) {
+            defaultRanks.set(i.toString(), { userId: null, style: 'Vide' });
+        }
+        lb = await Leaderboard.create({
+            messageId: null,
+            channelId: null,
+            ranks: defaultRanks
+        });
+    }
+    return lb;
 }
 
 module.exports = {
@@ -84,9 +85,9 @@ module.exports = {
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const sub = interaction.options.getSubcommand();
-        const data = loadLB();
+        const lbData = await getLeaderboardDoc();
 
-        // ─── 1️⃣ SOUS-COMMANDE : REGLES (Texte mis à jour et corrigé !) ───
+        // ─── 1️⃣ SOUS-COMMANDE : REGLES ───
         if (sub === 'regles') {
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
@@ -94,7 +95,7 @@ module.exports = {
                 .setTitle('🏆 CLASSEMENT OFFICIEL GURENKAI — RÈGLEMENT')
                 .setColor('#FFD700')
                 .setThumbnail('attachment://logo.png')
-                .setDescription('>>> **Système mis en place par Tacos votre goat**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**. C\'est un  classement PvP, tout le monde est pas concerné, chaque combat doit être encadré et la décision doit etre respecté.')
+                .setDescription('>>> **Système mis en place par Tacos votre goat**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**. C\'est un classement PvP, tout le monde est pas concerné, chaque combat doit être encadré et la décision doit etre respecté.')
                 .addFields(
                     { name: '📥 1. COMMENT REJOINDRE LE CLASSEMENT', value: '• Pour intégrer le LB, tu dois DM un **Rank Manager** pour être ajouté à la file d\'attente des challengers.\n• Tu peux directement défier le **No.10** pour tenter de prendre sa place.\n• Une fois dans le classement, tu peux sauter des rangs pour défier qui tu veux, jusqu\'à ce que tu atteignes le **Top 5**.' },
                     { name: '👑 2. LE SAINT TOP 5', value: '• À partir du Top 5, il n\'est plus possible de sauter des rangs : **tu ne peux défier que la place juste au-dessus de toi**.\n• Tu peux aussi défier une place en dessous de toi (pour le fun / garder la forme) : Mais si l\'adversaire gagne, il prend ta place.' },
@@ -131,34 +132,34 @@ module.exports = {
         // ─── 2️⃣ SOUS-COMMANDE : SETUP (Pose le classement) ───
         if (sub === 'setup') {
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
-            const embed = buildLBEmbed(data.ranks);
+            const embed = buildLBEmbed(lbData.ranks);
 
             const sentMsg = await interaction.channel.send({
                 embeds: [embed],
                 files: [logo]
             });
 
-            data.messageId = sentMsg.id;
-            data.channelId = sentMsg.channelId;
-            saveLB(data);
+            lbData.messageId = sentMsg.id;
+            lbData.channelId = sentMsg.channelId;
+            await lbData.save();
 
             return interaction.editReply({ content: '✅ Classement vide initialisé dans ce salon !' });
         }
 
-        // ─── 3️⃣ SOUS-COMMANDE : MODIFIER (Met un joueur ou vide la place) ───
+        // ─── 3️⃣ SOUS-COMMANDE : MODIFIER ───
         if (sub === 'modifier') {
             const rang = interaction.options.getInteger('rang').toString();
             const joueur = interaction.options.getUser('joueur');
             const style = interaction.options.getString('style') || 'Physique';
 
             if (!joueur) {
-                data.ranks[rang] = { userId: null, style: 'Vide' };
+                lbData.ranks.set(rang, { userId: null, style: 'Vide' });
             } else {
-                data.ranks[rang] = { userId: joueur.id, style: style };
+                lbData.ranks.set(rang, { userId: joueur.id, style: style });
             }
 
-            saveLB(data);
-            await updateLiveEmbed(interaction.client, data);
+            await lbData.save();
+            await updateLiveEmbed(interaction.client, lbData);
 
             const messageRetour = joueur 
                 ? `✅ Rang **No.${rang}** attribué à <@${joueur.id}> avec le style \`${style}\`.`
@@ -167,7 +168,7 @@ module.exports = {
             return interaction.editReply({ content: messageRetour });
         }
 
-        // ─── 4️⃣ SOUS-COMMANDE : INVERSER (Le swap de deux joueurs) ───
+        // ─── 4️⃣ SOUS-COMMANDE : INVERSER ───
         if (sub === 'inverser') {
             const j1 = interaction.options.getUser('joueur1');
             const j2 = interaction.options.getUser('joueur2');
@@ -175,7 +176,7 @@ module.exports = {
             let rangJ1 = null;
             let rangJ2 = null;
 
-            for (const [r, value] of Object.entries(data.ranks)) {
+            for (const [r, value] of lbData.ranks.entries()) {
                 if (value.userId === j1.id) rangJ1 = r;
                 if (value.userId === j2.id) rangJ2 = r;
             }
@@ -186,12 +187,14 @@ module.exports = {
                 });
             }
 
-            const temp = { ...data.ranks[rangJ1] };
-            data.ranks[rangJ1] = { ...data.ranks[rangJ2] };
-            data.ranks[rangJ2] = temp;
+            const val1 = lbData.ranks.get(rangJ1);
+            const val2 = lbData.ranks.get(rangJ2);
 
-            saveLB(data);
-            await updateLiveEmbed(interaction.client, data);
+            lbData.ranks.set(rangJ1, { ...val2 });
+            lbData.ranks.set(rangJ2, { ...val1 });
+
+            await lbData.save();
+            await updateLiveEmbed(interaction.client, lbData);
 
             return interaction.editReply({ 
                 content: `🔄 Échange effectué avec succès !\n• <@${j1.id}> passe du rang **No.${rangJ1}** au **No.${rangJ2}**.\n• <@${j2.id}> passe du rang **No.${rangJ2}** au **No.${rangJ1}**.` 
@@ -201,13 +204,13 @@ module.exports = {
 };
 
 // Fonction interne pour actualiser instantanément l'embed d'affichage
-async function updateLiveEmbed(client, data) {
-    if (!data.messageId || !data.channelId) return;
+async function updateLiveEmbed(client, lbData) {
+    if (!lbData.messageId || !lbData.channelId) return;
     try {
-        const channel = await client.channels.fetch(data.channelId);
-        const message = await channel.messages.fetch(data.messageId);
+        const channel = await client.channels.fetch(lbData.channelId);
+        const message = await channel.messages.fetch(lbData.messageId);
         const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
-        const newEmbed = buildLBEmbed(data.ranks);
+        const newEmbed = buildLBEmbed(lbData.ranks);
         await message.edit({ embeds: [newEmbed], files: [logo] });
     } catch (e) {
         console.error('[ERREUR MISE A JOUR LB LIVE]', e.message);

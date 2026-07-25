@@ -1,14 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const fs = require('fs');
 const path = require('path');
-
-const dataFile = path.join(__dirname, '..', 'data', 'kos.json');
-
-function load() {
-    if (!fs.existsSync(dataFile)) return { messageId: null, entries: [] };
-    try { return JSON.parse(fs.readFileSync(dataFile, 'utf8')); } catch (e) { return { messageId: null, entries: [] }; }
-}
-function save(data) { fs.writeFileSync(dataFile, JSON.stringify(data, null, 2)); }
+const Kos = require('../models/Kos');
 
 function buildEmbed(entries) {
     const embed = new EmbedBuilder()
@@ -47,40 +39,50 @@ module.exports = {
         const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
-        const sub  = interaction.options.getSubcommand();
-        const data = load();
-
-        if (sub === 'ajouter') {
-            const nom    = interaction.options.getString('nom');
-            const raison = interaction.options.getString('raison');
-            if (data.entries.find(e => e.nom.toLowerCase() === nom.toLowerCase()))
-                return interaction.editReply({ content: `❌ **${nom}** est déjà sur la liste KOS.` });
-            data.entries.push({ nom, raison, addedBy: interaction.user.username, addedAt: new Date().toISOString() });
-        } else {
-            const nom = interaction.options.getString('nom');
-            const idx = data.entries.findIndex(e => e.nom.toLowerCase() === nom.toLowerCase());
-            if (idx === -1) return interaction.editReply({ content: `❌ **${nom}** n'est pas dans la liste KOS.` });
-            data.entries.splice(idx, 1);
+        const sub = interaction.options.getSubcommand();
+        
+        // Récupération ou initialisation du document KOS unique dans MongoDB
+        let kosData = await Kos.findOne();
+        if (!kosData) {
+            kosData = new Kos({ messageId: null, entries: [] });
         }
 
-        const embed = buildEmbed(data.entries);
-        const logo  = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
+        if (sub === 'ajouter') {
+            const nom = interaction.options.getString('nom');
+            const raison = interaction.options.getString('raison');
+            
+            if (kosData.entries.find(e => e.nom.toLowerCase() === nom.toLowerCase()))
+                return interaction.editReply({ content: `❌ **${nom}** est déjà sur la liste KOS.` });
+            
+            kosData.entries.push({ nom, raison, addedBy: interaction.user.username, addedAt: new Date() });
+        } else {
+            const nom = interaction.options.getString('nom');
+            const idx = kosData.entries.findIndex(e => e.nom.toLowerCase() === nom.toLowerCase());
+            
+            if (idx === -1) return interaction.editReply({ content: `❌ **${nom}** n'est pas dans la liste KOS.` });
+            
+            kosData.entries.splice(idx, 1);
+        }
+
+        const embed = buildEmbed(kosData.entries);
+        const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
         try {
             const channel = await interaction.client.channels.fetch(process.env.KOS_CHANNEL_ID);
-            if (data.messageId) {
+            if (kosData.messageId) {
                 try {
-                    const msg = await channel.messages.fetch(data.messageId);
+                    const msg = await channel.messages.fetch(kosData.messageId);
                     await msg.edit({ embeds: [embed], files: [logo] });
                 } catch {
                     const newMsg = await channel.send({ embeds: [embed], files: [logo] });
-                    data.messageId = newMsg.id;
+                    kosData.messageId = newMsg.id;
                 }
             } else {
                 const newMsg = await channel.send({ embeds: [embed], files: [logo] });
-                data.messageId = newMsg.id;
+                kosData.messageId = newMsg.id;
             }
-            save(data);
+            
+            await kosData.save();
             await interaction.editReply({ content: `✅ Liste KOS mise à jour.` });
         } catch (e) {
             console.error('[KOS]', e);

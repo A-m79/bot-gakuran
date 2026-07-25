@@ -1,9 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const path = require('path');
-const fs = require('fs');
+const Sondage = require('../models/Sondage'); // 👈 Import du modèle Mongoose
 
 const EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
-const dataFile = path.join(__dirname, '..', 'data', 'sondages.json');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -60,35 +59,21 @@ module.exports = {
             await msg.react(EMOJIS[i]);
         }
 
-        // --- SAUVEGARDE ET LOGS DE SÉCURITÉ ---
+        // --- SAUVEGARDE CLOUD MONGODB ---
         try {
             console.log(`[SONDAGE] Tentative de sauvegarde pour la question : "${question}"`);
-            const dataDir = path.dirname(dataFile);
-            if (!fs.existsSync(dataDir)) {
-                fs.mkdirSync(dataDir, { recursive: true });
-            }
 
-            let sondages = [];
-            if (fs.existsSync(dataFile)) {
-                try { 
-                    sondages = JSON.parse(fs.readFileSync(dataFile, 'utf8')); 
-                } catch (e) {
-                    console.log("[SONDAGE] Fichier JSON vide ou corrompu, réinitialisation.");
-                    sondages = [];
-                }
-            }
-
-            sondages.push({
+            await Sondage.create({
                 question: question,
                 channelId: interaction.channelId,
                 messageId: msg.id,
-                date: new Date().toLocaleDateString('fr-FR')
+                date: new Date().toLocaleDateString('fr-FR'),
+                createdAt: new Date()
             });
 
-            fs.writeFileSync(dataFile, JSON.stringify(sondages, null, 4), 'utf8');
-            console.log(`[SONDAGE] ✅ Sauvegarde réussie ! Total enregistré : ${sondages.length}`);
+            console.log('[SONDAGE] ✅ Sauvegarde cloud réussie !');
         } catch (err) {
-            console.error('[SONDAGE] ❌ Erreur lors de l\'écriture du fichier :', err);
+            console.error('[SONDAGE] ❌ Erreur lors de l\'enregistrement dans la base de données :', err);
         }
     }
 };

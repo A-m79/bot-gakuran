@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const Absence = require('../models/Absence'); // 👈 Import du modèle Mongoose
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -12,74 +11,63 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction) {
+        await interaction.deferReply({ ephemeral: true });
+
         const numero = interaction.options.getInteger('numero');
-        const filePath = path.join(__dirname, '..', 'data', 'absences.json');
 
-        if (!fs.existsSync(filePath)) {
-            return interaction.reply({
-                content: '📂 Aucune absence enregistrée.',
-                ephemeral: true
-            });
-        }
-
-        let absences = [];
         try {
-            absences = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        } catch (e) {
-            return interaction.reply({
-                content: '❌ Erreur lors de la lecture de la base de données.',
-                ephemeral: true
+            // 🍃 Récupération de toutes les absences depuis MongoDB
+            const absences = await Absence.find({});
+
+            if (!absences || absences.length === 0) {
+                return interaction.editReply({
+                    content: '📂 Le registre des absences est vide.'
+                });
+            }
+
+            const index = numero - 1;
+
+            if (index < 0 || index >= absences.length) {
+                return interaction.editReply({
+                    content: `❌ Numéro invalide. Veuillez entrer un numéro entre **1** et **${absences.length}**.`
+                });
+            }
+
+            const targetAbsence = absences[index];
+
+            // Sécurité : Vérifie si c'est l'auteur de l'absence OU un admin/staff
+            const isOwner = targetAbsence.userId === interaction.user.id;
+            const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) || 
+                            interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+            if (!isOwner && !isAdmin) {
+                return interaction.editReply({
+                    content: '❌ Tu ne peux supprimer que tes propres absences (seul le staff peut supprimer celles des autres).'
+                });
+            }
+
+            // 🍃 Suppression de l'élément spécifique de MongoDB grâce à son _id unique
+            await Absence.findByIdAndDelete(targetAbsence._id);
+
+            const embed = new EmbedBuilder()
+                .setTitle('🗑️ ABSENCE SUPPRIMÉE — GURENKAI')
+                .setColor('#FF0000')
+                .setDescription(`L'absence **n°${numero}** a bien été retirée du registre cloud.`)
+                .addFields(
+                    { name: '👤 Membre', value: `<@${targetAbsence.userId}>`, inline: true },
+                    { name: '🎮 Nom RP', value: `\`${targetAbsence.ingame || 'Non renseigné'}\``, inline: true },
+                    { name: '📅 Date', value: `\`${targetAbsence.dateDebut}\``, inline: true }
+                )
+                .setFooter({ text: 'Gurenkai • Registre mis à jour' })
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('[ERREUR SUPPRIMER-ABSENCE]', error);
+            await interaction.editReply({
+                content: '❌ Une erreur est survenue lors de la suppression de l\'absence.'
             });
         }
-
-        if (!Array.isArray(absences) || absences.length === 0) {
-            return interaction.reply({
-                content: '📂 Le registre des absences est vide.',
-                ephemeral: true
-            });
-        }
-
-        const index = numero - 1;
-
-        if (index < 0 || index >= absences.length) {
-            return interaction.reply({
-                content: `❌ Numéro invalide. Veuillez entrer un numéro entre **1** et **${absences.length}**.`,
-                ephemeral: true
-            });
-        }
-
-        const targetAbsence = absences[index];
-
-        // Sécurité : Vérifie si c'est l'auteur de l'absence OU un admin/staff
-        const isOwner = targetAbsence.userId === interaction.user.id;
-        const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) || 
-                        interaction.member.permissions.has(PermissionFlagsBits.Administrator);
-
-        if (!isOwner && !isAdmin) {
-            return interaction.reply({
-                content: '❌ Tu ne peux supprimer que tes propres absences (seul le staff peut supprimer celles des autres).',
-                ephemeral: true
-            });
-        }
-
-        // Suppression dans le tableau
-        const supprimee = absences.splice(index, 1)[0];
-
-        // Enregistrement dans le fichier JSON
-        fs.writeFileSync(filePath, JSON.stringify(absences, null, 2));
-
-        const embed = new EmbedBuilder()
-            .setTitle('🗑️ ABSENCE SUPPRIMÉE — GURENKAI')
-            .setColor('#FF0000')
-            .setDescription(`L'absence **n°${numero}** a bien été retirée du registre.`)
-            .addFields(
-                { name: '👤 Membre', value: `<@${supprimee.userId}>`, inline: true },
-                { name: '🎮 Nom RP', value: `\`${supprimee.ingame || 'Non renseigné'}\``, inline: true },
-                { name: '📅 Date', value: `\`${supprimee.dateDebut}\``, inline: true }
-            )
-            .setFooter({ text: 'Gurenkai • Registre mis à jour' })
-            .setTimestamp();
-
-        await interaction.reply({ embeds: [embed] });
     }
 };

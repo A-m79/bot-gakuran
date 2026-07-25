@@ -1,13 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const fs = require('fs');
 const path = require('path');
-
-const dataFile = path.join(__dirname, '..', 'data', 'activitycheck.json');
-
-function loadChecks() {
-    if (!fs.existsSync(dataFile)) return [];
-    try { return JSON.parse(fs.readFileSync(dataFile, 'utf8')); } catch (e) { return []; }
-}
+const ActivityCheck = require('../models/ActivityCheck');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -33,7 +26,7 @@ module.exports = {
         const sub = interaction.options.getSubcommand();
 
         if (sub === 'lancer') {
-            const objectif    = interaction.options.getInteger('objectif');
+            const objectif = interaction.options.getInteger('objectif');
             const messagePerso = interaction.options.getString('message') || 'Montrez votre présence et votre loyauté au sein du Gurenkai !';
 
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
@@ -62,16 +55,19 @@ module.exports = {
 
             await sentMsg.react('✅');
 
-            let checks = loadChecks().filter(c => c.reached);
-            checks.push({ messageId: sentMsg.id, channelId: sentMsg.channelId, objectif, reached: false });
-            fs.writeFileSync(dataFile, JSON.stringify(checks, null, 2));
+            // Enregistrement dans MongoDB via Mongoose
+            await ActivityCheck.create({
+                messageId: sentMsg.id,
+                channelId: sentMsg.channelId,
+                objectif,
+                reached: false
+            });
 
             await interaction.editReply({ content: `✅ Activity check lancé dans <#${process.env.ACTIVITY_CHECK_CHANNEL_ID}> — Objectif : **${objectif}** réactions.` });
         }
 
         if (sub === 'terminer') {
-            const checks = loadChecks();
-            const active = checks.find(c => !c.reached);
+            const active = await ActivityCheck.findOne({ reached: false });
             if (!active) return interaction.editReply({ content: '❌ Aucun activity check en cours.' });
 
             try {
@@ -106,9 +102,9 @@ module.exports = {
                     content: `🎉 **L'activity check est désormais terminé !**\nMerci aux **${count}** membres actifs d'avoir répondu présent. ⛩️🔥`
                 });
 
-                // 3. Clôture dans le fichier JSON
+                // 3. Clôture dans la base de données MongoDB
                 active.reached = true;
-                fs.writeFileSync(dataFile, JSON.stringify(checks, null, 2));
+                await active.save();
 
                 await interaction.editReply({ content: `✅ Activity check clôturé avec succès ! (**${count}** réactions enregistrées).` });
 
@@ -117,7 +113,7 @@ module.exports = {
                 
                 // Si le message d'origine a été supprimé, on ferme quand même dans la DB pour ne pas bloquer le bot
                 active.reached = true;
-                fs.writeFileSync(dataFile, JSON.stringify(checks, null, 2));
+                await active.save();
                 
                 await interaction.editReply({ content: "⚠️ Impossible de modifier le message d'origine (supprimé ?), mais l'activity check a bien été désactivé dans la base de données." });
             }

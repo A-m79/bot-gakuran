@@ -6,20 +6,10 @@ const {
     ActionRowBuilder, 
     AttachmentBuilder 
 } = require('discord.js');
-const fs = require('fs');
 const path = require('path');
+const Giveaway = require('../models/Giveaway');
 
 const GIVEAWAY_CHANNEL_ID = '1530477010684743690';
-const dataFile = path.join(__dirname, '..', 'data', 'giveaways.json');
-
-function loadGiveaways() {
-    if (!fs.existsSync(dataFile)) return {};
-    return JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-}
-
-function saveGiveaways(data) {
-    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
-}
 
 // Convertisseur de temps (ex: "10m", "1h", "2d") en millisecondes
 function parseDuration(str) {
@@ -64,7 +54,6 @@ module.exports = {
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à gérer les giveaways." });
 
         const sub = interaction.options.getSubcommand();
-        const giveaways = loadGiveaways();
 
         // ─── 1. START ───
         if (sub === 'start') {
@@ -98,7 +87,8 @@ module.exports = {
 
             const msg = await channel.send({ embeds: [embed], components: [btn], files: [logo] });
 
-            giveaways[msg.id] = {
+            // Enregistrement dans MongoDB via Mongoose
+            await Giveaway.create({
                 messageId: msg.id,
                 channelId: channel.id,
                 prize,
@@ -107,9 +97,7 @@ module.exports = {
                 ended: false,
                 hostId: interaction.user.id,
                 participants: []
-            };
-
-            saveGiveaways(giveaways);
+            });
 
             // Programmer la fin automatique
             setTimeout(() => {
@@ -122,8 +110,9 @@ module.exports = {
         // ─── 2. END ───
         if (sub === 'end') {
             const messageId = interaction.options.getString('message_id');
-            if (!giveaways[messageId]) return interaction.editReply({ content: '❌ Giveaway introuvable avec cet ID de message.' });
-            if (giveaways[messageId].ended) return interaction.editReply({ content: '⚠️ Ce giveaway est déjà terminé.' });
+            const gw = await Giveaway.findOne({ messageId });
+            if (!gw) return interaction.editReply({ content: '❌ Giveaway introuvable avec cet ID de message.' });
+            if (gw.ended) return interaction.editReply({ content: '⚠️ Ce giveaway est déjà terminé.' });
 
             await module.exports.endGiveaway(interaction.client, messageId);
             return interaction.editReply({ content: '✅ Giveaway terminé instantanément !' });
@@ -132,7 +121,7 @@ module.exports = {
         // ─── 3. REROLL ───
         if (sub === 'reroll') {
             const messageId = interaction.options.getString('message_id');
-            const gw = giveaways[messageId];
+            const gw = await Giveaway.findOne({ messageId });
             if (!gw) return interaction.editReply({ content: '❌ Giveaway introuvable.' });
             if (!gw.participants || gw.participants.length === 0) return interaction.editReply({ content: '❌ Aucun participant à reroll.' });
 
@@ -154,12 +143,11 @@ module.exports = {
 
     // Fonction d'arrêt d'un giveaway
     async endGiveaway(client, messageId) {
-        const giveaways = loadGiveaways();
-        const gw = giveaways[messageId];
+        const gw = await Giveaway.findOne({ messageId });
         if (!gw || gw.ended) return;
 
         gw.ended = true;
-        saveGiveaways(giveaways);
+        await gw.save();
 
         try {
             const channel = await client.channels.fetch(gw.channelId);
@@ -196,7 +184,7 @@ module.exports = {
             if (winners.length > 0) {
                 await channel.send({ content: `🎉 **Félicitations ${winners.map(id => `<@${id}>`).join(', ')} !** Tu as remporté : **${gw.prize}** !` });
             } else {
-                await channel.send({ content: `Â Aucun participant n'a rejoint le giveaway pour **${gw.prize}**.` });
+                await channel.send({ content: `❌ Aucun participant n'a rejoint le giveaway pour **${gw.prize}**.` });
             }
         } catch (e) {
             console.error('[ERREUR END GIVEAWAY]', e);

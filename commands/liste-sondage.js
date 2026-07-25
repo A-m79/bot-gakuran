@@ -1,8 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-const dataFile = path.join(__dirname, '..', 'data', 'sondages.json');
+const Sondage = require('../models/Sondage'); // 👈 Import du modèle Mongoose
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -21,31 +18,21 @@ module.exports = {
         const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
-        console.log(`[LISTE-SONDAGE] Lecture du fichier à l'emplacement : ${dataFile}`);
-        let sondages = [];
-        if (fs.existsSync(dataFile)) {
-            try { 
-                sondages = JSON.parse(fs.readFileSync(dataFile, 'utf8')); 
-                console.log(`[LISTE-SONDAGE] Fichier trouvé. Nombre de sondages chargés : ${sondages.length}`);
-            } catch (e) {
-                console.log("[LISTE-SONDAGE] Erreur de lecture du JSON.");
-            }
-        } else {
-            console.log("[LISTE-SONDAGE] Le fichier sondages.json n'existe pas sur le disque.");
-        }
-
-        if (sondages.length === 0)
-            return interaction.editReply({ content: '❌ Aucun sondage enregistré pour le moment.' });
-
-        const numero = interaction.options.getInteger('numero') || 1;
-        const idx = sondages.length - numero;
-
-        if (idx < 0)
-            return interaction.editReply({ content: `❌ Sondage n°${numero} introuvable. Il y a **${sondages.length}** sondage(s) enregistré(s).` });
-
-        const sondageData = sondages[idx];
-
         try {
+            // 🍃 Récupération des sondages depuis MongoDB (du plus récent au plus ancien)
+            const sondages = await Sondage.find().sort({ createdAt: -1 });
+
+            if (!sondages || sondages.length === 0)
+                return interaction.editReply({ content: '❌ Aucun sondage enregistré pour le moment.' });
+
+            const numero = interaction.options.getInteger('numero') || 1;
+            
+            // Tri du plus récent au plus ancien : index 0 = n°1 (le plus récent)
+            const sondageData = sondages[numero - 1];
+
+            if (!sondageData)
+                return interaction.editReply({ content: `❌ Sondage n°${numero} introuvable. Il y a **${sondages.length}** sondage(s) enregistré(s).` });
+
             const channel = await interaction.client.channels.fetch(sondageData.channelId);
             const message = await channel.messages.fetch(sondageData.messageId);
 
