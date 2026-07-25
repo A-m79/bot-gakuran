@@ -1,3 +1,5 @@
+require('dotenv').config();
+const mongoose = require('mongoose');
 const { 
     Client, 
     GatewayIntentBits, 
@@ -10,22 +12,18 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+const express = require('express');
+
+// ─── CONNEXION MONGODB ───
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('✅ Connecté à la base de données MongoDB Atlas !'))
+    .catch(err => console.error('❌ Erreur de connexion MongoDB :', err));
 
 // ─── SERVEUR HTTP (nécessaire pour Render / hébergement 24h/24) ───
-const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('✅ Bot Gakuran en ligne !'));
 app.listen(PORT, () => console.log(`🌐 Serveur HTTP actif sur le port ${PORT}`));
-
-require('dotenv').config();
-const mongoose = require('mongoose');
-
-// Connexion MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('✅ Connecté à la base de données MongoDB Atlas !'))
-    .catch(err => console.error('❌ Erreur MongoDB :', err));
 
 // ─── BOT DISCORD ───
 const client = new Client({
