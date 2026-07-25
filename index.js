@@ -14,6 +14,10 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
+// ─── MODÈLES MONGODB ───
+const Giveaway = require('./models/Giveaway');
+const giveawayModule = require('./commands/giveaway');
+
 // ─── CONNEXION MONGODB ───
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ Connecté à la base de données MongoDB Atlas !'))
@@ -54,6 +58,9 @@ client.once('ready', () => {
     console.log(`\n⛩️  Bot connecté en tant que ${client.user.tag}`);
     console.log(`📋 ${client.commands.size} commande(s) chargée(s)\n`);
     client.user.setActivity('Gakuran | Gang', { type: 3 });
+
+    // 🔄 Relancer les minuteurs des giveaways en cours après un redémarrage (Render)
+    giveawayModule.checkOngoingGiveaways(client);
 });
 
 // ─── ACTIVITY CHECK — Suivi des réactions ───
@@ -93,7 +100,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
                 .setColor('#00FF88')
                 .addFields(
                     { name: '🎯 Objectif fixé',    value: `${check.objectif} réactions`, inline: true },
-                    { name: '✅ Réponses reçues',  value: `${humanCount} membres`,        inline: true },
+                    { name: '✅ Réponses reçues',  value: `${humanCount} membres`,       inline: true },
                 )
                 .setFooter({ text: 'Gakuran Gang • Activity Check' })
                 .setTimestamp();
@@ -216,19 +223,9 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // --- B. BOUTON : PARTICIPER AU GIVEAWAY ---
+        // --- B. BOUTON : PARTICIPER AU GIVEAWAY (MongoDB) ---
         if (interaction.customId === 'giveaway_join') {
-            const dataFile = path.join(__dirname, 'data', 'giveaways.json');
-            if (!fs.existsSync(dataFile)) return interaction.reply({ content: '❌ Base de données des giveaways introuvable.', ephemeral: true });
-
-            let giveaways;
-            try {
-                giveaways = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-            } catch (e) {
-                return interaction.reply({ content: '❌ Erreur de lecture des données.', ephemeral: true });
-            }
-
-            const gw = giveaways[interaction.message.id];
+            const gw = await Giveaway.findOne({ messageId: interaction.message.id });
             if (!gw || gw.ended) {
                 return interaction.reply({ content: '❌ Ce giveaway est terminé !', ephemeral: true });
             }
@@ -239,7 +236,7 @@ client.on('interactionCreate', async interaction => {
             if (index > -1) {
                 // Retirer la participation
                 gw.participants.splice(index, 1);
-                fs.writeFileSync(dataFile, JSON.stringify(giveaways, null, 2));
+                await gw.save();
 
                 const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` });
@@ -256,7 +253,7 @@ client.on('interactionCreate', async interaction => {
             } else {
                 // Ajouter la participation
                 gw.participants.push(userId);
-                fs.writeFileSync(dataFile, JSON.stringify(giveaways, null, 2));
+                await gw.save();
 
                 const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` });

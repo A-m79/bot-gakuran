@@ -11,7 +11,6 @@ const Giveaway = require('../models/Giveaway');
 
 const GIVEAWAY_CHANNEL_ID = '1530477010684743690';
 
-// Convertisseur de temps (ex: "10m", "1h", "2d") en millisecondes
 function parseDuration(str) {
     const match = str.match(/^(\d+)([smhd])$/i);
     if (!match) return null;
@@ -24,7 +23,7 @@ function parseDuration(str) {
     return null;
 }
 
-module.exports = {
+const giveawayModule = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
         .setDescription('🎉 Gestion des giveaways du gang')
@@ -49,20 +48,18 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        // Vérification rôle admin
         const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à gérer les giveaways." });
 
         const sub = interaction.options.getSubcommand();
 
-        // ─── 1. START ───
         if (sub === 'start') {
             const dureeStr = interaction.options.getString('duree');
             const winnersCount = interaction.options.getInteger('gagnants');
             const prize = interaction.options.getString('lot');
 
             const durationMs = parseDuration(dureeStr);
-            if (!durationMs) return interaction.editReply({ content: '❌ Format de durée invalide. Utilisez `s` (secondes), `m` (minutes), `h` (heures) ou `d` (jours). Ex: `2h` ou `1d`.' });
+            if (!durationMs) return interaction.editReply({ content: '❌ Format de durée invalide. Utilisez `s`, `m`, `h` ou `d`.' });
 
             const channel = await interaction.client.channels.fetch(GIVEAWAY_CHANNEL_ID);
             if (!channel) return interaction.editReply({ content: '❌ Salon de giveaway introuvable.' });
@@ -87,7 +84,6 @@ module.exports = {
 
             const msg = await channel.send({ embeds: [embed], components: [btn], files: [logo] });
 
-            // Enregistrement dans MongoDB via Mongoose
             await Giveaway.create({
                 messageId: msg.id,
                 channelId: channel.id,
@@ -99,26 +95,24 @@ module.exports = {
                 participants: []
             });
 
-            // Programmer la fin automatique
+            const timeLeft = endsAt - Date.now();
             setTimeout(() => {
-                module.exports.endGiveaway(interaction.client, msg.id);
-            }, durationMs);
+                giveawayModule.endGiveaway(interaction.client, msg.id);
+            }, timeLeft);
 
             return interaction.editReply({ content: `✅ Giveaway lancé dans <#${GIVEAWAY_CHANNEL_ID}> !` });
         }
 
-        // ─── 2. END ───
         if (sub === 'end') {
             const messageId = interaction.options.getString('message_id');
             const gw = await Giveaway.findOne({ messageId });
-            if (!gw) return interaction.editReply({ content: '❌ Giveaway introuvable avec cet ID de message.' });
+            if (!gw) return interaction.editReply({ content: '❌ Giveaway introuvable.' });
             if (gw.ended) return interaction.editReply({ content: '⚠️ Ce giveaway est déjà terminé.' });
 
-            await module.exports.endGiveaway(interaction.client, messageId);
+            await giveawayModule.endGiveaway(interaction.client, messageId);
             return interaction.editReply({ content: '✅ Giveaway terminé instantanément !' });
         }
 
-        // ─── 3. REROLL ───
         if (sub === 'reroll') {
             const messageId = interaction.options.getString('message_id');
             const gw = await Giveaway.findOne({ messageId });
@@ -141,7 +135,6 @@ module.exports = {
         }
     },
 
-    // Fonction d'arrêt d'un giveaway
     async endGiveaway(client, messageId) {
         const gw = await Giveaway.findOne({ messageId });
         if (!gw || gw.ended) return;
@@ -189,5 +182,28 @@ module.exports = {
         } catch (e) {
             console.error('[ERREUR END GIVEAWAY]', e);
         }
+    },
+
+    // Fonction de vérification au démarrage pour relancer les timers perdus
+    async checkOngoingGiveaways(client) {
+        try {
+            const activeGiveaways = await Giveaway.find({ ended: false });
+            const now = Date.now();
+
+            for (const gw of activeGiveaways) {
+                const timeLeft = gw.endsAt - now;
+                if (timeLeft <= 0) {
+                    await giveawayModule.endGiveaway(client, gw.messageId);
+                } else {
+                    setTimeout(() => {
+                        giveawayModule.endGiveaway(client, gw.messageId);
+                    }, timeLeft);
+                }
+            }
+        } catch (e) {
+            console.error('[ERREUR CHECK GIVEAWAYS]', e);
+        }
     }
 };
+
+module.exports = giveawayModule;
