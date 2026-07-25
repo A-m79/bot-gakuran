@@ -1,12 +1,10 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const fs = require('fs');
 const path = require('path');
-
-const dataFile = path.join(__dirname, '..', 'data', 'evenements.json');
+const Evenement = require('../models/Evenement'); // 👈 Import du modèle MongoDB
 
 const TYPE_CONFIG = {
-    raid:         { emoji: '⚔️',  label: 'Raid',           color: '#E74C3C' },
-    reunion:      { emoji: '🤝',  label: 'Réunion',        color: '#3498DB' },
+    raid:         { emoji: '⚔️',  label: 'Raid',            color: '#E74C3C' },
+    reunion:      { emoji: '🤝',  label: 'Réunion',         color: '#3498DB' },
     entrainement: { emoji: '🏋️', label: 'Entraînement',   color: '#2ECC71' },
     session:      { emoji: '🎮',  label: 'Session de jeu', color: '#9B59B6' },
     autre:        { emoji: '📋',  label: 'Autre',          color: '#FFD700' },
@@ -64,7 +62,7 @@ module.exports = {
                 { name: '📍 Lieu',         value: lieu,                                                              inline: true },
                 { name: '🏷️ Type',        value: `${tc.emoji} ${tc.label}`,                                         inline: true },
                 { name: '👮 Organisé par', value: `${interaction.user} (${interaction.member.roles.highest.name})`,  inline: true },
-                { name: '─'.repeat(30), value: '\u200B',                                                            inline: false },
+                { name: '─'.repeat(30), value: '\u200B',                                                             inline: false },
                 { name: '📩 Présence',     value: '✅ Présent   ❌ Absent   ❓ Peut-être',                           inline: false },
             )
             .setFooter({ text: 'Gurenkai • Événement officiel' })
@@ -82,18 +80,11 @@ module.exports = {
         await msg.react('❌');
         await msg.react('❓');
 
-        // ✅ Sauvegarde pour /liste-event
-        let events = [];
-        if (fs.existsSync(dataFile)) {
-            try { events = JSON.parse(fs.readFileSync(dataFile, 'utf8')); } catch (e) {}
-        }
-        events.push({
+        // ✅ Sauvegarde sécurisée dans MongoDB Atlas
+        await Evenement.create({
             messageId: msg.id,
             channelId: msg.channelId,
             titre, date, heure, lieu, type
         });
-        // Garder seulement les 20 derniers
-        if (events.length > 20) events = events.slice(-20);
-        fs.writeFileSync(dataFile, JSON.stringify(events, null, 2));
     }
 };

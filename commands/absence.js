@@ -7,8 +7,8 @@ const {
     EmbedBuilder, 
     AttachmentBuilder 
 } = require('discord.js');
-const fs = require('fs');
 const path = require('path');
+const Absence = require('../models/Absence'); // 👈 On importe le modèle Mongoose
 
 const ABSENCE_CHANNEL_ID = '1530476747622187190';
 
@@ -74,27 +74,15 @@ module.exports = {
 
             const duree = parseInt(dureeStr, 10) || 1;
 
-            // Enregistrement dans data/absences.json
-            const dataDir = path.join(__dirname, '..', 'data');
-            const filePath = path.join(dataDir, 'absences.json');
-
-            if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-            let absences = [];
-            if (fs.existsSync(filePath)) {
-                try { absences = JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch (e) { absences = []; }
-            }
-
-            absences.push({
+            // 🍃 Enregistrement direct dans MongoDB Atlas via Mongoose
+            await Absence.create({
                 userId: interaction.user.id,
                 ingame: ingame,
                 dateDebut: dateDebut,
                 duree: duree,
                 raison: reason,
-                createdAt: new Date().toISOString()
+                createdAt: new Date()
             });
-
-            fs.writeFileSync(filePath, JSON.stringify(absences, null, 2));
 
             // Envoi dans le salon Discord
             const channel = await interaction.client.channels.fetch(ABSENCE_CHANNEL_ID);
@@ -118,9 +106,10 @@ module.exports = {
                 await channel.send({ embeds: [embed], files: [logo] });
             }
 
-            return submitted.editReply({ content: '✅ Ta déclaration d\'absence a bien été prise en compte !' });
+            return submitted.editReply({ content: '✅ Ta déclaration d\'absence a bien été prise en compte et sauvegardée dans le cloud !' });
 
         } catch (error) {
+            console.error('[ABSENCE_ERROR]', error);
             return;
         }
     }

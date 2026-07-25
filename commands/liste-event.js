@@ -1,8 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-const dataFile = path.join(__dirname, '..', 'data', 'evenements.json');
+const Evenement = require('../models/Evenement');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -18,24 +15,24 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
+        const aLeGrade = interaction.member.roles.cache.some(r => 
+            (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id)
+        );
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
-        let events = [];
-        if (fs.existsSync(dataFile)) {
-            try { events = JSON.parse(fs.readFileSync(dataFile, 'utf8')); } catch (e) {}
-        }
+        // 🍃 Récupère les événements depuis MongoDB (du plus récent au plus ancien)
+        const events = await Evenement.find().sort({ createdAt: -1 });
 
         if (events.length === 0)
             return interaction.editReply({ content: '❌ Aucun événement enregistré pour le moment.' });
 
-        const numero   = interaction.options.getInteger('numero') || 1;
-        const idx      = events.length - numero;
+        const numero = interaction.options.getInteger('numero') || 1;
+        
+        // Comme c'est trié du plus récent au plus ancien : index 0 = n°1 (le plus récent)
+        const eventData = events[numero - 1];
 
-        if (idx < 0)
+        if (!eventData)
             return interaction.editReply({ content: `❌ Événement n°${numero} introuvable. Il y a **${events.length}** événement(s) enregistré(s).` });
-
-        const eventData = events[idx];
 
         try {
             const channel = await interaction.client.channels.fetch(eventData.channelId);
