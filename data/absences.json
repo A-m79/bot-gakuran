@@ -1,14 +1,1 @@
-[
-  {
-    "userId": "123456789012345678",
-    "dateDebut": "28/07/2026",
-    "duree": 5,
-    "raison": "Vacances"
-  },
-  {
-    "userId": "987654321098765432",
-    "dateDebut": "20/07/2026",
-    "duree": 3,
-    "raison": "Problème PC"
-  }
-]
+[]
