@@ -194,7 +194,7 @@ const giveawayModule = {
 
             await interaction.message.edit({ embeds: [updatedEmbed], components: [updatedBtn], files });
 
-            return interaction.reply({ content: '🎉 Ta participation ao giveaway a bien été enregistrée ! Good luck !', ephemeral: true });
+            return interaction.reply({ content: '🎉 Ta participation au giveaway a bien été enregistrée ! Good luck !', ephemeral: true });
         }
 
         if (interaction.customId && interaction.customId.startsWith('gw_leave_confirm_')) {
@@ -246,14 +246,13 @@ const giveawayModule = {
     },
 
     async endGiveaway(client, messageId) {
-        // 🔥 Récupération fraîche et atomique pour s'assurer d'avoir les derniers participants enregistrés
         const gw = await Giveaway.findOneAndUpdate(
             { messageId, ended: false },
             { $set: { ended: true } },
             { new: true }
         );
 
-        if (!gw) return; // Déjà terminé ou introuvable
+        if (!gw) return;
 
         try {
             const channel = await client.channels.fetch(gw.channelId);
@@ -261,7 +260,6 @@ const giveawayModule = {
             const logoPath = path.join(__dirname, '..', 'logo.png');
             const logo = fs.existsSync(logoPath) ? new AttachmentBuilder(logoPath, { name: 'logo.png' }) : null;
 
-            // ❌ ANNULATION SI MOINS DE 2 PARTICIPANTS
             if (!gw.participants || gw.participants.length < 2) {
                 const cancelledEmbed = new EmbedBuilder()
                     .setTitle(`❌ GIVEAWAY ANNULÉ : ${gw.prize}`)
@@ -288,7 +286,6 @@ const giveawayModule = {
                 return;
             }
 
-            // 🎉 TIRAGE AU SORT NORMAL SI >= 2 PARTICIPANTS
             const winners = [];
             const pool = [...gw.participants];
 
