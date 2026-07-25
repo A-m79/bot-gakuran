@@ -6,6 +6,7 @@ const {
     ActionRowBuilder, 
     AttachmentBuilder 
 } = require('discord.js');
+const fs = require('fs');
 const path = require('path');
 const Giveaway = require('../models/Giveaway');
 
@@ -65,15 +66,17 @@ const giveawayModule = {
             if (!channel) return interaction.editReply({ content: '❌ Salon de giveaway introuvable.' });
 
             const endsAt = Date.now() + durationMs;
-            const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
+            const logoPath = path.join(__dirname, '..', 'logo.png');
+            const logo = fs.existsSync(logoPath) ? new AttachmentBuilder(logoPath, { name: 'logo.png' }) : null;
 
             const embed = new EmbedBuilder()
                 .setTitle(`🎉 GIVEAWAY : ${prize}`)
                 .setDescription(`Cliquez sur le bouton ci-dessous pour participer !\n\n• **Lot :** ${prize}\n• **Nombre de gagnants :** \`${winnersCount}\`\n• **Fin :** <t:${Math.floor(endsAt / 1000)}:R> (<t:${Math.floor(endsAt / 1000)}:f>)\n• **Organisé par :** <@${interaction.user.id}>`)
                 .setColor('#FF2A7A')
-                .setThumbnail('attachment://logo.png')
                 .setFooter({ text: '0 Participant(s) • Gurenkai' })
                 .setTimestamp(endsAt);
+
+            if (logo) embed.setThumbnail('attachment://logo.png');
 
             const btn = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -82,7 +85,10 @@ const giveawayModule = {
                     .setStyle(ButtonStyle.Primary)
             );
 
-            const msg = await channel.send({ embeds: [embed], components: [btn], files: [logo] });
+            const msgPayload = { embeds: [embed], components: [btn] };
+            if (logo) msgPayload.files = [logo];
+
+            const msg = await channel.send(msgPayload);
 
             await Giveaway.create({
                 messageId: msg.id,
@@ -135,27 +141,136 @@ const giveawayModule = {
         }
     },
 
-    async endGiveaway(client, messageId) {
-        const gw = await Giveaway.findOne({ messageId });
-        if (!gw || gw.ended) return;
+    async handleButton(interaction) {
+        if (interaction.customId === 'giveaway_join') {
+            const gw = await Giveaway.findOne({ messageId: interaction.message.id });
+            if (!gw || gw.ended) {
+                return interaction.reply({ content: '❌ Ce giveaway est terminé !', ephemeral: true });
+            }
 
-        gw.ended = true;
-        await gw.save();
+            const userId = interaction.user.id;
+            const participants = (gw.participants || []).map(id => String(id));
+            const isParticipating = participants.includes(userId);
+
+            if (isParticipating) {
+                const confirmRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`gw_leave_confirm_${interaction.message.id}`)
+                        .setLabel('Oui, quitter le giveaway')
+                        .setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder()
+                        .setCustomId('gw_leave_cancel')
+                        .setLabel('Annuler')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+                return interaction.reply({
+                    content: '⚠️ Tu participes déjà à ce giveaway. Es-tu sûr de vouloir **quitter** ?',
+                    components: [confirmRow],
+                    ephemeral: true
+                });
+            }
+
+            const updatedGw = await Giveaway.findOneAndUpdate(
+                { messageId: interaction.message.id },
+                { $addToSet: { participants: userId } },
+                { new: true }
+            );
+
+            const count = updatedGw.participants.length;
+
+            const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                .setFooter({ text: `${count} Participant(s) • Gurenkai` });
+
+            const updatedBtn = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('giveaway_join')
+                    .setLabel(`🎉 Participer (${count})`)
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+            const logoPath = path.join(__dirname, '..', 'logo.png');
+            const files = fs.existsSync(logoPath) ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
+
+            await interaction.message.edit({ embeds: [updatedEmbed], components: [updatedBtn], files });
+
+            return interaction.reply({ content: '🎉 Ta participation ao giveaway a bien été enregistrée ! Good luck !', ephemeral: true });
+        }
+
+        if (interaction.customId && interaction.customId.startsWith('gw_leave_confirm_')) {
+            const messageId = interaction.customId.replace('gw_leave_confirm_', '');
+            const gw = await Giveaway.findOne({ messageId });
+            
+            if (!gw || gw.ended) {
+                return interaction.update({ content: '❌ Ce giveaway est terminé ou introuvable.', components: [] });
+            }
+
+            const userId = interaction.user.id;
+
+            const updatedGw = await Giveaway.findOneAndUpdate(
+                { messageId },
+                { $pull: { participants: userId } },
+                { new: true }
+            );
+
+            const count = updatedGw.participants.length;
+
+            try {
+                const channel = await interaction.client.channels.fetch(gw.channelId);
+                const message = await channel.messages.fetch(messageId);
+
+                const updatedEmbed = EmbedBuilder.from(message.embeds[0])
+                    .setFooter({ text: `${count} Participant(s) • Gurenkai` });
+
+                const updatedBtn = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('giveaway_join')
+                        .setLabel(`🎉 Participer (${count})`)
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+                const logoPath = path.join(__dirname, '..', 'logo.png');
+                const files = fs.existsSync(logoPath) ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
+
+                await message.edit({ embeds: [updatedEmbed], components: [updatedBtn], files });
+            } catch (e) {
+                console.error('[ERREUR UPDATE MESSAGE GIVEAWAY LEAVE]', e);
+            }
+
+            return interaction.update({ content: '❌ Tu as bien quitté le giveaway.', components: [] });
+        }
+
+        if (interaction.customId === 'gw_leave_cancel') {
+            return interaction.update({ content: '👍 Action annulée, tu restes inscrit au giveaway !', components: [] });
+        }
+    },
+
+    async endGiveaway(client, messageId) {
+        // 🔥 Récupération fraîche et atomique pour s'assurer d'avoir les derniers participants enregistrés
+        const gw = await Giveaway.findOneAndUpdate(
+            { messageId, ended: false },
+            { $set: { ended: true } },
+            { new: true }
+        );
+
+        if (!gw) return; // Déjà terminé ou introuvable
 
         try {
             const channel = await client.channels.fetch(gw.channelId);
             const message = await channel.messages.fetch(gw.messageId);
-            const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
+            const logoPath = path.join(__dirname, '..', 'logo.png');
+            const logo = fs.existsSync(logoPath) ? new AttachmentBuilder(logoPath, { name: 'logo.png' }) : null;
 
             // ❌ ANNULATION SI MOINS DE 2 PARTICIPANTS
             if (!gw.participants || gw.participants.length < 2) {
                 const cancelledEmbed = new EmbedBuilder()
                     .setTitle(`❌ GIVEAWAY ANNULÉ : ${gw.prize}`)
                     .setColor('#ED4245')
-                    .setThumbnail('attachment://logo.png')
                     .setDescription(`• **Lot :** ${gw.prize}\n• **Organisé par :** <@${gw.hostId}>\n• **Statut :** Annulé (Moins de 2 participants)`)
                     .setFooter({ text: `${gw.participants ? gw.participants.length : 0} Participant(s) • Gurenkai` })
                     .setTimestamp();
+
+                if (logo) cancelledEmbed.setThumbnail('attachment://logo.png');
 
                 const disabledBtn = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
@@ -165,7 +280,10 @@ const giveawayModule = {
                         .setDisabled(true)
                 );
 
-                await message.edit({ embeds: [cancelledEmbed], components: [disabledBtn], files: [logo] });
+                const editPayload = { embeds: [cancelledEmbed], components: [disabledBtn] };
+                if (logo) editPayload.files = [logo];
+
+                await message.edit(editPayload);
                 await channel.send({ content: `❌ Le giveaway pour **${gw.prize}** a été annulé faute de participants (moins de 2 participants).` });
                 return;
             }
@@ -182,10 +300,11 @@ const giveawayModule = {
             const endEmbed = new EmbedBuilder()
                 .setTitle(`🎉 GIVEAWAY TERMINÉ : ${gw.prize}`)
                 .setColor('#2F3136')
-                .setThumbnail('attachment://logo.png')
                 .setDescription(`• **Lot :** ${gw.prize}\n• **Organisé par :** <@${gw.hostId}>\n• **Gagnant(s) :** ${winners.map(id => `<@${id}>`).join(', ')}`)
                 .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` })
                 .setTimestamp();
+
+            if (logo) endEmbed.setThumbnail('attachment://logo.png');
 
             const disabledBtn = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -195,7 +314,10 @@ const giveawayModule = {
                     .setDisabled(true)
             );
 
-            await message.edit({ embeds: [endEmbed], components: [disabledBtn], files: [logo] });
+            const editPayload = { embeds: [endEmbed], components: [disabledBtn] };
+            if (logo) editPayload.files = [logo];
+
+            await message.edit(editPayload);
 
             if (winners.length > 0) {
                 await channel.send({ content: `🎉 **Félicitations ${winners.map(id => `<@${id}>`).join(', ')} !** Tu as remporté : **${gw.prize}** !` });
@@ -205,7 +327,6 @@ const giveawayModule = {
         }
     },
 
-    // Fonction de vérification au démarrage pour relancer les timers perdus
     async checkOngoingGiveaways(client) {
         try {
             const activeGiveaways = await Giveaway.find({ ended: false });
