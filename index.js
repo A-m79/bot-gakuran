@@ -1,4 +1,13 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, Partials } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Collection, 
+    EmbedBuilder, 
+    Partials, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle 
+} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -148,11 +157,13 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply(msg);
             }
         }
-        return; // On arrête ici si c'était une commande slash
+        return;
     }
 
-    // 2️⃣ GESTION DU CLIC SUR LE BOUTON (OUVRIR LE MODAL)
+    // 2️⃣ GESTION DES CLICS SUR LES BOUTONS
     if (interaction.isButton()) {
+
+        // --- A. BOUTON : FICHE IDENTITÉ ---
         if (interaction.customId === 'ouvrir_fiche_modal') {
             const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 
@@ -196,8 +207,67 @@ client.on('interactionCreate', async interaction => {
             );
 
             await interaction.showModal(modal);
+            return;
         }
-        return; // On arrête ici si c'était un clic de bouton
+
+        // --- B. BOUTON : PARTICIPER AU GIVEAWAY ---
+        if (interaction.customId === 'giveaway_join') {
+            const dataFile = path.join(__dirname, 'data', 'giveaways.json');
+            if (!fs.existsSync(dataFile)) return interaction.reply({ content: '❌ Base de données des giveaways introuvable.', ephemeral: true });
+
+            let giveaways;
+            try {
+                giveaways = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+            } catch (e) {
+                return interaction.reply({ content: '❌ Erreur de lecture des données.', ephemeral: true });
+            }
+
+            const gw = giveaways[interaction.message.id];
+            if (!gw || gw.ended) {
+                return interaction.reply({ content: '❌ Ce giveaway est terminé !', ephemeral: true });
+            }
+
+            const userId = interaction.user.id;
+            const index = gw.participants.indexOf(userId);
+
+            if (index > -1) {
+                // Retirer la participation
+                gw.participants.splice(index, 1);
+                fs.writeFileSync(dataFile, JSON.stringify(giveaways, null, 2));
+
+                const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` });
+
+                const updatedBtn = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('giveaway_join')
+                        .setLabel(`🎉 Participer (${gw.participants.length})`)
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+                await interaction.message.edit({ embeds: [updatedEmbed], components: [updatedBtn] });
+                return interaction.reply({ content: '❌ Ta participation au giveaway a été retirée.', ephemeral: true });
+            } else {
+                // Ajouter la participation
+                gw.participants.push(userId);
+                fs.writeFileSync(dataFile, JSON.stringify(giveaways, null, 2));
+
+                const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` });
+
+                const updatedBtn = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('giveaway_join')
+                        .setLabel(`🎉 Participer (${gw.participants.length})`)
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+                await interaction.message.edit({ embeds: [updatedEmbed], components: [updatedBtn] });
+                return interaction.reply({ content: '🎉 Ta participation au giveaway a bien été enregistrée ! Good luck !', ephemeral: true });
+            }
+        }
+
+        return;
     }
 
     // 3️⃣ GESTION DE LA SOUMISSION DES FORMULAIRES (MODALS)
@@ -205,8 +275,6 @@ client.on('interactionCreate', async interaction => {
         
         // --- FORMULAIRE : FICHE INFO ---
         if (interaction.customId === 'soumettre_fiche_modal') {
-            const { EmbedBuilder } = require('discord.js');
-
             const nom = interaction.fields.getTextInputValue('fiche_nom');
             const style = interaction.fields.getTextInputValue('fiche_style');
             const tel = interaction.fields.getTextInputValue('fiche_tel');
@@ -256,20 +324,17 @@ client.on('interactionCreate', async interaction => {
 
         // --- FORMULAIRE : CRÉATION DE L'EMBED ---
         if (interaction.customId === 'embed_builder_modal') {
-            const { EmbedBuilder } = require('discord.js');
-
             const titre = interaction.fields.getTextInputValue('embed_titre');
             const message = interaction.fields.getTextInputValue('embed_message');
             let couleur = interaction.fields.getTextInputValue('embed_couleur').trim() || '#FF2A7A';
             const image = interaction.fields.getTextInputValue('embed_image') || '';
             const miniature = interaction.fields.getTextInputValue('embed_miniature') || '';
 
-            // Petite sécurité pour le format du code couleur Hex
             if (couleur && !couleur.startsWith('#')) {
                 couleur = '#' + couleur;
             }
             if (!/^#[0-9A-F]{6}$/i.test(couleur)) {
-                couleur = '#FF2A7A'; // Retour à la couleur Gurenkai si le code hex est invalide
+                couleur = '#FF2A7A';
             }
 
             const embed = new EmbedBuilder()
@@ -293,10 +358,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                // Envoie directement l'embed dans le salon où la commande a été lancée
                 await interaction.channel.send({ embeds: [embed] });
-                
-                // Réponse éphémère pour confirmer que c'est fait
                 await interaction.reply({ content: '✅ Embed publié avec succès !', ephemeral: true });
             } catch (err) {
                 console.error('[ERREUR CREATION EMBED]', err);
