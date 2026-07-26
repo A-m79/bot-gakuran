@@ -63,55 +63,95 @@ client.once('ready', () => {
     giveawayModule.checkOngoingGiveaways(client);
 });
 
+// ─── VERROU ANTI-RACE CONDITION (Empêche les exécutions simultanées pendant les spam-reactions) ───
+const processingChecks = new Set();
+
 // ─── ACTIVITY CHECK — Suivi des réactions ───
 client.on('messageReactionAdd', async (reaction, user) => {
     if (user.bot) return;
 
-    if (reaction.partial) {
-        try { await reaction.fetch(); } catch (e) { return; }
-    }
-    if (reaction.message.partial) {
-        try { await reaction.message.fetch(); } catch (e) { return; }
-    }
+    try {
+        // 1. Gestion sécurisée des partials
+        if (reaction.partial) {
+            try { await reaction.fetch(); } catch { return; }
+        }
+        if (reaction.message.partial) {
+            try { await reaction.message.fetch(); } catch { return; }
+        }
 
-    if (reaction.emoji.name !== '✅') return;
+        if (reaction.emoji.name !== '✅') return;
 
-    const checkFile = path.join(__dirname, 'data', 'activitycheck.json');
-    if (!fs.existsSync(checkFile)) return;
+        // Si ce message est déjà en cours d'analyse par une autre réaction instantanée, on passe
+        if (processingChecks.has(reaction.message.id)) return;
 
-    let checks;
-    try { checks = JSON.parse(fs.readFileSync(checkFile, 'utf8')); } catch (e) { return; }
+        const checkFile = path.join(__dirname, 'data', 'activitycheck.json');
+        if (!fs.existsSync(checkFile)) return;
 
-    const check = checks.find(c => c.messageId === reaction.message.id && !c.reached);
-    if (!check) return;
+        let checks;
+        try { 
+            checks = JSON.parse(fs.readFileSync(checkFile, 'utf8')); 
+        } catch (e) { 
+            return; 
+        }
 
-    const users = await reaction.users.fetch();
-    const humanCount = users.filter(u => !u.bot).size;
+        const check = checks.find(c => c.messageId === reaction.message.id && !c.reached);
+        if (!check) return;
 
-    if (humanCount >= check.objectif) {
-        check.reached = true;
-        fs.writeFileSync(checkFile, JSON.stringify(checks, null, 2));
+        // Pose du verrou sur le message actif
+        processingChecks.add(reaction.message.id);
 
-        try {
-            const channel = await client.channels.fetch(check.channelId);
-            const successEmbed = new EmbedBuilder()
-                .setTitle('🎉 OBJECTIF ATTEINT — GAKURAN')
-                .setDescription(`**${humanCount} membre(s)** ont répondu présent !\n\n> La guilde est mobilisée. Bien joué à tous ! 🔥`)
-                .setColor('#00FF88')
-                .addFields(
-                    { name: '🎯 Objectif fixé',    value: `${check.objectif} réactions`, inline: true },
-                    { name: '✅ Réponses reçues',  value: `${humanCount} membres`,       inline: true },
-                )
-                .setFooter({ text: 'Gakuran Gang • Activity Check' })
-                .setTimestamp();
+        // 2. Fetch sécurisé des réacteurs (bloque les crashs de Rate-Limit / HTTP 429)
+        const users = await reaction.users.fetch().catch(() => null);
+        if (!users) {
+            processingChecks.delete(reaction.message.id);
+            return;
+        }
 
-            await channel.send({
-                content: '🎊 **Objectif atteint !** @everyone',
-                embeds: [successEmbed],
-                allowedMentions: { parse: ['everyone'] }
-            });
-        } catch (e) {
-            console.error('[ACTIVITY CHECK]', e.message);
+        const humanCount = users.filter(u => !u.bot).size;
+
+        if (humanCount >= check.objectif) {
+            check.reached = true;
+
+            // 3. Sauvegarde sécurisée du fichier JSON
+            try {
+                fs.writeFileSync(checkFile, JSON.stringify(checks, null, 2));
+            } catch (err) {
+                console.error('[ACTIVITY CHECK] Erreur d\'écriture JSON :', err);
+            }
+
+            // 4. Envoi sécurisé de la confirmation dans le salon
+            try {
+                const channel = await client.channels.fetch(check.channelId).catch(() => null);
+                if (channel) {
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle('🎉 OBJECTIF ATTEINT — GAKURAN')
+                        .setDescription(`**${humanCount} membre(s)** ont répondu présent !\n\n> La guilde est mobilisée. Bien joué à tous ! 🔥`)
+                        .setColor('#00FF88')
+                        .addFields(
+                            { name: '🎯 Objectif fixé',    value: `${check.objectif} réactions`, inline: true },
+                            { name: '✅ Réponses reçues',  value: `${humanCount} membres`,      inline: true },
+                        )
+                        .setFooter({ text: 'Gakuran Gang • Activity Check' })
+                        .setTimestamp();
+
+                    await channel.send({
+                        content: '🎊 **Objectif atteint !** @everyone',
+                        embeds: [successEmbed],
+                        allowedMentions: { parse: ['everyone'] }
+                    });
+                }
+            } catch (e) {
+                console.error('[ACTIVITY CHECK] Erreur d\'envoi du message :', e.message);
+            }
+        }
+
+        // Retrait du verrou une fois l'opération terminée
+        processingChecks.delete(reaction.message.id);
+
+    } catch (err) {
+        console.error('[ACTIVITY CHECK CRITICAL ERROR]', err);
+        if (reaction.message?.id) {
+            processingChecks.delete(reaction.message.id);
         }
     }
 });
@@ -147,7 +187,7 @@ client.on('interactionCreate', async interaction => {
                             .setColor('#FFD700')
                             .setDescription(`**${interaction.user.tag}** a exécuté une commande.`)
                             .addFields(
-                                { name: '👤 Utilisateur', value: `<@${interaction.user.id}>`,  inline: true },
+                                { name: '👤 Utilisateur', value: `<@${interaction.user.id}>`,   inline: true },
                                 { name: '💻 Commande',    value: `\`/${interaction.commandName}\``, inline: true },
                                 { name: '📍 Salon',       value: `<#${interaction.channelId}>`, inline: true },
                                 { name: '📋 Données',     value: optsText || '_Aucune option_', inline: false }
