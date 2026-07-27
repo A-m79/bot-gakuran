@@ -2,12 +2,40 @@ const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discor
 const path = require('path');
 const Leaderboard = require('../models/Leaderboard');
 
+// ─── HELPERS POUR COMPATIBILITÉ OBJECT / MAP MONGOOSE ───
+function getRank(ranks, key) {
+    if (!ranks) return null;
+    const k = key.toString();
+    if (ranks instanceof Map || typeof ranks.get === 'function') {
+        return ranks.get(k);
+    }
+    return ranks[k];
+}
+
+function setRank(ranks, key, value) {
+    if (!ranks) return;
+    const k = key.toString();
+    if (ranks instanceof Map || typeof ranks.set === 'function') {
+        ranks.set(k, value);
+    } else {
+        ranks[k] = value;
+    }
+}
+
+function getEntries(ranks) {
+    if (!ranks) return [];
+    if (ranks instanceof Map || typeof ranks.entries === 'function') {
+        return Array.from(ranks.entries());
+    }
+    return Object.entries(ranks);
+}
+
 // Génération de l'embed visuel du classement
-function buildLBEmbed(ranksMap) {
+function buildLBEmbed(ranks) {
     let leaderboardText = '';
     
     for (let i = 1; i <= 10; i++) {
-        const rankData = ranksMap.get(i.toString()) || { userId: null, style: 'Vide' };
+        const rankData = getRank(ranks, i) || { userId: null, style: 'Vide' };
         
         let emoji = '⚡';
         if (i === 1) emoji = '👑';
@@ -38,9 +66,9 @@ function buildLBEmbed(ranksMap) {
 async function getLeaderboardDoc() {
     let lb = await Leaderboard.findOne();
     if (!lb) {
-        const defaultRanks = new Map();
+        const defaultRanks = {};
         for (let i = 1; i <= 10; i++) {
-            defaultRanks.set(i.toString(), { userId: null, style: 'Vide' });
+            defaultRanks[i.toString()] = { userId: null, style: 'Vide' };
         }
         lb = await Leaderboard.create({
             messageId: null,
@@ -153,11 +181,12 @@ module.exports = {
             const style = interaction.options.getString('style') || 'Physique';
 
             if (!joueur) {
-                lbData.ranks.set(rang, { userId: null, style: 'Vide' });
+                setRank(lbData.ranks, rang, { userId: null, style: 'Vide' });
             } else {
-                lbData.ranks.set(rang, { userId: joueur.id, style: style });
+                setRank(lbData.ranks, rang, { userId: joueur.id, style: style });
             }
 
+            lbData.markModified('ranks');
             await lbData.save();
             await updateLiveEmbed(interaction.client, lbData);
 
@@ -176,9 +205,10 @@ module.exports = {
             let rangJ1 = null;
             let rangJ2 = null;
 
-            for (const [r, value] of lbData.ranks.entries()) {
-                if (value.userId === j1.id) rangJ1 = r;
-                if (value.userId === j2.id) rangJ2 = r;
+            const entries = getEntries(lbData.ranks);
+            for (const [r, value] of entries) {
+                if (value && value.userId === j1.id) rangJ1 = r;
+                if (value && value.userId === j2.id) rangJ2 = r;
             }
 
             if (!rangJ1 || !rangJ2) {
@@ -187,12 +217,13 @@ module.exports = {
                 });
             }
 
-            const val1 = lbData.ranks.get(rangJ1);
-            const val2 = lbData.ranks.get(rangJ2);
+            const val1 = getRank(lbData.ranks, rangJ1);
+            const val2 = getRank(lbData.ranks, rangJ2);
 
-            lbData.ranks.set(rangJ1, { ...val2 });
-            lbData.ranks.set(rangJ2, { ...val1 });
+            setRank(lbData.ranks, rangJ1, { ...val2 });
+            setRank(lbData.ranks, rangJ2, { ...val1 });
 
+            lbData.markModified('ranks');
             await lbData.save();
             await updateLiveEmbed(interaction.client, lbData);
 
