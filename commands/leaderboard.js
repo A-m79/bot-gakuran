@@ -78,6 +78,29 @@ async function getLeaderboardDoc() {
     return lb;
 }
 
+// Mise à jour live de l'embed sur Discord
+async function updateLiveEmbed(client, lbData) {
+    if (!lbData.messageId || !lbData.channelId) {
+        return { success: false, error: 'Message ID ou Channel ID non défini en base de données.' };
+    }
+    try {
+        const channel = await client.channels.fetch(lbData.channelId);
+        if (!channel) return { success: false, error: 'Salon introuvable.' };
+        
+        const message = await channel.messages.fetch(lbData.messageId);
+        if (!message) return { success: false, error: 'Message du classement introuvable dans ce salon.' };
+
+        const newEmbed = buildLBEmbed(lbData.ranks);
+        
+        // Édition simple de l'embed (Discord garde automatiquement logo.png déjà attaché)
+        await message.edit({ embeds: [newEmbed] });
+        return { success: true };
+    } catch (e) {
+        console.error('[ERREUR LB EDIT]', e);
+        return { success: false, error: e.message || String(e) };
+    }
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('leaderboard')
@@ -117,7 +140,6 @@ module.exports = {
 
         const sub = interaction.options.getSubcommand();
 
-        // ─── 1️⃣ RÈGLES ───
         if (sub === 'regles') {
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
@@ -154,7 +176,6 @@ module.exports = {
             return interaction.editReply({ content: '✅ Règlement publié !' });
         }
 
-        // ─── 2️⃣ SETUP ───
         if (sub === 'setup') {
             await Leaderboard.deleteMany({});
 
@@ -174,10 +195,9 @@ module.exports = {
                 ranks: defaultRanks
             });
 
-            return interaction.editReply({ content: `✅ Classement crée et connecté ! (ID Message : \`${sentMsg.id}\`)` });
+            return interaction.editReply({ content: `✅ Classement créé et connecté ! (ID Message : \`${sentMsg.id}\`)` });
         }
 
-        // ─── 3️⃣ CONNECTER ───
         if (sub === 'connecter') {
             const msgId = interaction.options.getString('message_id').trim();
             
@@ -190,12 +210,12 @@ module.exports = {
                 lbData.channelId = targetMsg.channelId;
                 await lbData.save();
 
-                const updated = await updateLiveEmbed(interaction.client, lbData);
+                const liveRes = await updateLiveEmbed(interaction.client, lbData);
 
-                if (updated) {
+                if (liveRes.success) {
                     return interaction.editReply({ content: `🔗 Bot connecté au message \`${msgId}\` et embed mis à jour en direct !` });
                 } else {
-                    return interaction.editReply({ content: `⚠️ Connecté à l'ID \`${msgId}\`, mais l'édition de l'embed a échoué.` });
+                    return interaction.editReply({ content: `⚠️ Connecté à l'ID \`${msgId}\`, mais l'édition a échoué : \`${liveRes.error}\`` });
                 }
             } catch (err) {
                 return interaction.editReply({ content: `❌ Impossible de trouver le message avec l'ID \`${msgId}\` dans ce salon.` });
@@ -204,7 +224,6 @@ module.exports = {
 
         const lbData = await getLeaderboardDoc();
 
-        // ─── 4️⃣ MODIFIER ───
         if (sub === 'modifier') {
             const rang = interaction.options.getInteger('rang').toString();
             const joueur = interaction.options.getUser('joueur');
@@ -219,20 +238,19 @@ module.exports = {
             lbData.markModified('ranks');
             await lbData.save();
 
-            const updated = await updateLiveEmbed(interaction.client, lbData);
+            const liveRes = await updateLiveEmbed(interaction.client, lbData);
 
             const messageRetour = joueur 
                 ? `✅ Rang **No.${rang}** attribué à <@${joueur.id}> avec le style \`${style}\`.`
                 : `✅ Rang **No.${rang}** vidé avec succès.`;
 
-            const statusEmbed = updated 
+            const statusEmbed = liveRes.success 
                 ? '\n🟢 Embed Discord mis à jour !' 
-                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité.';
+                : `\n⚠️ **Attention :** Modifié en BDD mais l'embed Discord n'a pas pu être édité. Raison: \`${liveRes.error}\``;
 
             return interaction.editReply({ content: messageRetour + statusEmbed });
         }
 
-        // ─── 5️⃣ INVERSER ───
         if (sub === 'inverser') {
             const j1 = interaction.options.getUser('joueur1');
             const j2 = interaction.options.getUser('joueur2');
@@ -261,11 +279,11 @@ module.exports = {
             lbData.markModified('ranks');
             await lbData.save();
 
-            const updated = await updateLiveEmbed(interaction.client, lbData);
+            const liveRes = await updateLiveEmbed(interaction.client, lbData);
 
-            const statusEmbed = updated 
+            const statusEmbed = liveRes.success 
                 ? '\n🟢 Embed Discord mis à jour !' 
-                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité.';
+                : `\n⚠️ **Attention :** Modifié en BDD mais l'embed Discord n'a pas pu être édité. Raison: \`${liveRes.error}\``;
 
             return interaction.editReply({ 
                 content: `🔄 Échange effectué avec succès !\n• <@${j1.id}> passe du rang **No.${rangJ1}** au **No.${rangJ2}**.\n• <@${j2.id}> passe du rang **No.${rangJ2}** au **No.${rangJ1}**.` + statusEmbed 
@@ -273,28 +291,3 @@ module.exports = {
         }
     }
 };
-
-// Mettre à jour l'embed en vidant proprement la liste d'attachments pour éviter le rejet Discord
-async function updateLiveEmbed(client, lbData) {
-    if (!lbData.messageId || !lbData.channelId) return false;
-    try {
-        const channel = await client.channels.fetch(lbData.channelId);
-        if (!channel) return false;
-        
-        const message = await channel.messages.fetch(lbData.messageId);
-        if (!message) return false;
-
-        const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
-        const newEmbed = buildLBEmbed(lbData.ranks);
-        
-        await message.edit({ 
-            embeds: [newEmbed], 
-            files: [logo],
-            attachments: [] // Ne pas retirer : réinitialise les fichiers pour valider logo.png
-        });
-        return true;
-    } catch (e) {
-        console.error('[ERREUR LB EDIT]', e);
-        return false;
-    }
-}
