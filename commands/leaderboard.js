@@ -62,30 +62,20 @@ function buildLBEmbed(ranks) {
         .setTimestamp();
 }
 
-// Récupère l'unique document MongoDB et nettoie automatiquement tous les doublons parasites
 async function getLeaderboardDoc() {
-    const docs = await Leaderboard.find();
-    
-    if (docs.length === 0) {
+    let lb = await Leaderboard.findOne();
+    if (!lb) {
         const defaultRanks = {};
         for (let i = 1; i <= 10; i++) {
             defaultRanks[i.toString()] = { userId: null, style: 'Vide' };
         }
-        return await Leaderboard.create({
+        lb = await Leaderboard.create({
             messageId: null,
             channelId: null,
             ranks: defaultRanks
         });
     }
-
-    // S'il y a plusieurs documents en base, on garde celui qui a un messageId actif et on supprime les autres !
-    if (docs.length > 1) {
-        const validDoc = docs.find(d => d.messageId) || docs[0];
-        await Leaderboard.deleteMany({ _id: { $ne: validDoc._id } });
-        return validDoc;
-    }
-
-    return docs[0];
+    return lb;
 }
 
 // Mise à jour live de l'embed sur Discord
@@ -212,11 +202,18 @@ module.exports = {
             
             try {
                 const targetMsg = await interaction.channel.messages.fetch(msgId);
-                const lbData = await getLeaderboardDoc();
-
-                lbData.messageId = targetMsg.id;
-                lbData.channelId = targetMsg.channelId;
-                await lbData.save();
+                
+                // Mise à jour directe dans MongoDB avec findOneAndUpdate pour éviter tout rejet de schéma
+                const lbData = await Leaderboard.findOneAndUpdate(
+                    {}, 
+                    { 
+                        $set: { 
+                            messageId: targetMsg.id, 
+                            channelId: targetMsg.channelId 
+                        } 
+                    }, 
+                    { new: true, upsert: true }
+                );
 
                 const liveRes = await updateLiveEmbed(interaction.client, lbData);
 
