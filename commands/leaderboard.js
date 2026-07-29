@@ -177,7 +177,7 @@ module.exports = {
             return interaction.editReply({ content: `✅ Classement crée et connecté ! (ID Message : \`${sentMsg.id}\`)` });
         }
 
-        // ─── 3️⃣ CONNECTER UN MESSAGE EXISTANT ───
+        // ─── 3️⃣ CONNECTER ───
         if (sub === 'connecter') {
             const msgId = interaction.options.getString('message_id').trim();
             
@@ -190,11 +190,15 @@ module.exports = {
                 lbData.channelId = targetMsg.channelId;
                 await lbData.save();
 
-                await updateLiveEmbed(interaction.client, lbData);
+                const updated = await updateLiveEmbed(interaction.client, lbData);
 
-                return interaction.editReply({ content: `🔗 Bot connecté au message \`${msgId}\` avec succès !` });
+                if (updated) {
+                    return interaction.editReply({ content: `🔗 Bot connecté au message \`${msgId}\` et embed mis à jour en direct !` });
+                } else {
+                    return interaction.editReply({ content: `⚠️ Connecté à l'ID \`${msgId}\`, mais l'édition de l'embed a échoué.` });
+                }
             } catch (err) {
-                return interaction.editReply({ content: `❌ Impossible de trouver le message avec l'ID \`${msgId}\` dans ce salon. Vérifiez l'ID.` });
+                return interaction.editReply({ content: `❌ Impossible de trouver le message avec l'ID \`${msgId}\` dans ce salon.` });
             }
         }
 
@@ -223,7 +227,7 @@ module.exports = {
 
             const statusEmbed = updated 
                 ? '\n🟢 Embed Discord mis à jour !' 
-                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité (Message introuvable ou mauvais ID). Utilisez `/leaderboard connecter`.';
+                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité.';
 
             return interaction.editReply({ content: messageRetour + statusEmbed });
         }
@@ -261,7 +265,7 @@ module.exports = {
 
             const statusEmbed = updated 
                 ? '\n🟢 Embed Discord mis à jour !' 
-                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité. Utilisez `/leaderboard connecter`.';
+                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité.';
 
             return interaction.editReply({ 
                 content: `🔄 Échange effectué avec succès !\n• <@${j1.id}> passe du rang **No.${rangJ1}** au **No.${rangJ2}**.\n• <@${j2.id}> passe du rang **No.${rangJ2}** au **No.${rangJ1}**.` + statusEmbed 
@@ -270,7 +274,7 @@ module.exports = {
     }
 };
 
-// Mettre à jour l'embed sans refaire planter Discord avec les fichiers joints
+// Mettre à jour l'embed en vidant proprement la liste d'attachments pour éviter le rejet Discord
 async function updateLiveEmbed(client, lbData) {
     if (!lbData.messageId || !lbData.channelId) return false;
     try {
@@ -280,13 +284,17 @@ async function updateLiveEmbed(client, lbData) {
         const message = await channel.messages.fetch(lbData.messageId);
         if (!message) return false;
 
+        const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
         const newEmbed = buildLBEmbed(lbData.ranks);
         
-        // Mise à jour de l'embed uniquement (sans re-re-uploader l'image qui fait tout crash)
-        await message.edit({ embeds: [newEmbed] });
+        await message.edit({ 
+            embeds: [newEmbed], 
+            files: [logo],
+            attachments: [] // Ne pas retirer : réinitialise les fichiers pour valider logo.png
+        });
         return true;
     } catch (e) {
-        console.error('[ERREUR LB EDIT]', e.message);
+        console.error('[ERREUR LB EDIT]', e);
         return false;
     }
 }
