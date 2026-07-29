@@ -62,7 +62,6 @@ function buildLBEmbed(ranks) {
         .setTimestamp();
 }
 
-// Fonction utilitaire pour récupérer ou initialiser le document unique Leaderboard dans MongoDB
 async function getLeaderboardDoc() {
     let lb = await Leaderboard.findOne();
     if (!lb) {
@@ -89,18 +88,23 @@ module.exports = {
         )
         .addSubcommand(sub => sub
             .setName('setup')
-            .setDescription('Poser le classement vide initial')
+            .setDescription('Poser un nouveau classement propre')
+        )
+        .addSubcommand(sub => sub
+            .setName('connecter')
+            .setDescription('Lier le bot à un message de classement existant via son ID')
+            .addStringOption(opt => opt.setName('message_id').setDescription('L\'ID du message du classement').setRequired(true))
         )
         .addSubcommand(sub => sub
             .setName('modifier')
-            .setDescription('Attribuer un rang à un joueur (laisser le joueur vide pour libérer la place)')
+            .setDescription('Attribuer un rang à un joueur (laisser vide pour libérer)')
             .addIntegerOption(opt => opt.setName('rang').setDescription('Le rang (1-10)').setRequired(true).setMinValue(1).setMaxValue(10))
-            .addUserOption(opt => opt.setName('joueur').setDescription('Le joueur à placer (ne rien mettre pour vider)').setRequired(false))
-            .addStringOption(opt => opt.setName('style').setDescription('Style de combat du joueur').setRequired(false))
+            .addUserOption(opt => opt.setName('joueur').setDescription('Le joueur à placer').setRequired(false))
+            .addStringOption(opt => opt.setName('style').setDescription('Style de combat').setRequired(false))
         )
         .addSubcommand(sub => sub
             .setName('inverser')
-            .setDescription('Échanger les places de deux joueurs sur le classement')
+            .setDescription('Échanger les places de deux joueurs')
             .addUserOption(opt => opt.setName('joueur1').setDescription('Premier joueur').setRequired(true))
             .addUserOption(opt => opt.setName('joueur2').setDescription('Deuxième joueur').setRequired(true))
         ),
@@ -108,14 +112,12 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        // Vérification des permissions admin via .env
         const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à utiliser cette commande." });
 
         const sub = interaction.options.getSubcommand();
-        const lbData = await getLeaderboardDoc();
 
-        // ─── 1️⃣ SOUS-COMMANDE : REGLES ───
+        // ─── 1️⃣ RÈGLES ───
         if (sub === 'regles') {
             const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
 
@@ -123,58 +125,82 @@ module.exports = {
                 .setTitle('🏆 CLASSEMENT OFFICIEL GURENKAI — RÈGLEMENT')
                 .setColor('#FFD700')
                 .setThumbnail('attachment://logo.png')
-                .setDescription('>>> **Système mis en place par Tacos votre goat**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**. C\'est un classement PvP, tout le monde est pas concerné, chaque combat doit être encadré et la décision doit etre respecté.')
+                .setDescription('>>> **Système mis en place par Tacos votre goat**\n\nLe classement (LB) sert à déterminer les meilleurs combattants du gang, du **No.10 au No.1**.')
                 .addFields(
                     { name: '📥 1. COMMENT REJOINDRE LE CLASSEMENT', value: '• Pour intégrer le LB, tu dois DM un **Rank Manager** pour être ajouté à la file d\'attente des challengers.\n• Tu peux directement défier le **No.10** pour tenter de prendre sa place.\n• Une fois dans le classement, tu peux sauter des rangs pour défier qui tu veux, jusqu\'à ce que tu atteignes le **Top 5**.' },
-                    { name: '👑 2. LE SAINT TOP 5', value: '• À partir du Top 5, il n\'est plus possible de sauter des rangs : **tu ne peux défier que la place juste au-dessus de toi**.\n• Tu peux aussi défier une place en dessous de toi (pour le fun / garder la forme) : Mais si l\'adversaire gagne, il prend ta place.' },
-                    { name: '🛡️ 3. GRÂCE (Protection après défense)', value: '• Si tu défends ta place avec succès (tu gagnes contre un challenger), tu obtiens une Grâce : **tu ne peux pas être défié pendant 24h**.' },
-                    { name: '👤 4. CONDITIONS D\'ÉLIGIBILITÉ', value: '• Être un membre actif du gang Gurenkai.\n• **Aucun compte alternatif (alt) n\'est autorisé** (un seul compte par joueur).' }
+                    { name: '👑 2. LE SAINT TOP 5', value: '• À partir du Top 5, il n\'est plus possible de sauter des rangs : **tu ne peux défier que la place juste au-dessus de toi**.' },
+                    { name: '🛡️ 3. GRÂCE', value: '• Si tu défends ta place avec succès, tu obtiens une Grâce : **tu ne peux pas être défié pendant 24h**.' },
+                    { name: '👤 4. ÉLIGIBILITÉ', value: '• Être un membre actif du gang Gurenkai. Aucun compte alt autorisé.' }
                 );
 
             const embed2 = new EmbedBuilder()
-                .setTitle('⚔️ RÈGLES DES COMBATS & CONDUITE')
+                .setTitle('⚔️ RÈGLES DES COMBATS')
                 .setColor('#FFD700')
                 .addFields(
-                    { name: '🥊 5. RÈGLES DE DÉROULEMENT DES COMBATS', value: '• **Cooldown :** Cooldown de 48h avant de pouvoir redéfier quelqu\'un qui t\'a battu.\n• **Limite quotidienne :** Tu peux demander à combattre 2 personnes différentes maximum par jour (selon l\'accord du rank manager).\n• **Format :** Premier à 3 rounds gagnants (FT3), pour tous les rangs.\n• **Lieu & Encadrement :** L\'organisation du combat se déroulera dans un salon dédié, jamais en privé (toujours avec la présence d\'un rank manager).\n• **Délai :** Après un défi, l\'adversaire a 1 jour de délai pour accepter. Passé ce délai, le combat doit être accepté le jour 2, sinon échange automatique des places.\n• **No.1 :** Le No.1 peut aussi être défié (cooldown de 48h).\n\n📌 *Note : Les rank managers ne font pas partie du LB.*' },
-                    { name: '🚫 7. RÈGLES DE CONDUITE DIRECTES', value: '• Non-respect d\'une règle = défaite directe + possible blacklist.\n• Quitter en plein combat = forfait (sauf accord adverse).\n• Inactif sur le LB (= pas de combat pour défendre sa place) pendant 1 semaine = **retrait du LB**.\n• Interdiction d\'extorsion, de spam, de toxicité ou de désinformation.\n• **5 forfaits cumulés** = blacklist du LB d\'une semaine.' }
+                    { name: '🥊 5. DÉROULEMENT', value: '• Cooldown de 48h après une défaite.\n• Format FT3 (3 rounds gagnants).\n• Présence obligatoire d\'un Rank Manager.' },
+                    { name: '🚫 7. CONDUITE', value: '• Inactif 1 semaine = retrait du LB.\n• 5 forfaits cumulés = blacklist du LB 1 semaine.' }
                 );
 
             const embed3 = new EmbedBuilder()
-                .setTitle('⚙️ RÈGLES SPÉCIFIQUES & LITIGES')
+                .setTitle('⚙️ LITIGES & JEU')
                 .setColor('#FFD700')
                 .addFields(
-                    { name: '🎮 8. RÈGLES SPÉCIFIQUES AU JEU', value: '• Changer de taille/style en plein combat est interdit.\n• Hack, bug abuse, lag switch = **ban permanent du LB et du gang**.' },
-                    { name: '🎥 9. PREUVES', value: '• Tout signalement pour non-respect des règles doit être accompagné d\'une preuve (vidéo/replay).' }
+                    { name: '🎮 8. JEU', value: '• Interdiction de changer de style en plein combat.\n• Cheat/Lag switch = ban permanent.' }
                 )
-                .setFooter({ text: 'Gurenkai • Respect, fun, et Puissance x) .' })
+                .setFooter({ text: 'Gurenkai • Respect, fun, et Puissance.' })
                 .setTimestamp();
 
-            await interaction.channel.send({
-                embeds: [embed1, embed2, embed3],
-                files: [logo]
-            });
-
-            return interaction.editReply({ content: '✅ Règlement officiel mis à jour et publié !' });
+            await interaction.channel.send({ embeds: [embed1, embed2, embed3], files: [logo] });
+            return interaction.editReply({ content: '✅ Règlement publié !' });
         }
 
-        // ─── 2️⃣ SOUS-COMMANDE : SETUP (Pose le classement) ───
+        // ─── 2️⃣ SETUP ───
         if (sub === 'setup') {
-            const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
-            const embed = buildLBEmbed(lbData.ranks);
+            await Leaderboard.deleteMany({});
 
-            const sentMsg = await interaction.channel.send({
-                embeds: [embed],
-                files: [logo]
+            const defaultRanks = {};
+            for (let i = 1; i <= 10; i++) {
+                defaultRanks[i.toString()] = { userId: null, style: 'Vide' };
+            }
+
+            const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
+            const embed = buildLBEmbed(defaultRanks);
+
+            const sentMsg = await interaction.channel.send({ embeds: [embed], files: [logo] });
+
+            await Leaderboard.create({
+                messageId: sentMsg.id,
+                channelId: sentMsg.channelId,
+                ranks: defaultRanks
             });
 
-            lbData.messageId = sentMsg.id;
-            lbData.channelId = sentMsg.channelId;
-            await lbData.save();
-
-            return interaction.editReply({ content: '✅ Classement vide initialisé dans ce salon !' });
+            return interaction.editReply({ content: `✅ Classement crée et connecté ! (ID Message : \`${sentMsg.id}\`)` });
         }
 
-        // ─── 3️⃣ SOUS-COMMANDE : MODIFIER ───
+        // ─── 3️⃣ CONNECTER UN MESSAGE EXISTANT ───
+        if (sub === 'connecter') {
+            const msgId = interaction.options.getString('message_id').trim();
+            
+            try {
+                const targetMsg = await interaction.channel.messages.fetch(msgId);
+                let lbData = await Leaderboard.findOne();
+                if (!lbData) lbData = await getLeaderboardDoc();
+
+                lbData.messageId = targetMsg.id;
+                lbData.channelId = targetMsg.channelId;
+                await lbData.save();
+
+                await updateLiveEmbed(interaction.client, lbData);
+
+                return interaction.editReply({ content: `🔗 Bot connecté au message \`${msgId}\` avec succès !` });
+            } catch (err) {
+                return interaction.editReply({ content: `❌ Impossible de trouver le message avec l'ID \`${msgId}\` dans ce salon. Vérifiez l'ID.` });
+            }
+        }
+
+        const lbData = await getLeaderboardDoc();
+
+        // ─── 4️⃣ MODIFIER ───
         if (sub === 'modifier') {
             const rang = interaction.options.getInteger('rang').toString();
             const joueur = interaction.options.getUser('joueur');
@@ -188,16 +214,21 @@ module.exports = {
 
             lbData.markModified('ranks');
             await lbData.save();
-            await updateLiveEmbed(interaction.client, lbData);
+
+            const updated = await updateLiveEmbed(interaction.client, lbData);
 
             const messageRetour = joueur 
                 ? `✅ Rang **No.${rang}** attribué à <@${joueur.id}> avec le style \`${style}\`.`
                 : `✅ Rang **No.${rang}** vidé avec succès.`;
 
-            return interaction.editReply({ content: messageRetour });
+            const statusEmbed = updated 
+                ? '\n🟢 Embed Discord mis à jour !' 
+                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité (Message introuvable ou mauvais ID). Utilisez `/leaderboard connecter`.';
+
+            return interaction.editReply({ content: messageRetour + statusEmbed });
         }
 
-        // ─── 4️⃣ SOUS-COMMANDE : INVERSER ───
+        // ─── 5️⃣ INVERSER ───
         if (sub === 'inverser') {
             const j1 = interaction.options.getUser('joueur1');
             const j2 = interaction.options.getUser('joueur2');
@@ -213,7 +244,7 @@ module.exports = {
 
             if (!rangJ1 || !rangJ2) {
                 return interaction.editReply({ 
-                    content: `❌ Impossible d'inverser. Les deux joueurs doivent déjà posséder un rang.\n• Rang de ${j1} : ${rangJ1 ? `No.${rangJ1}` : '**Non classé**'}\n• Rang de ${j2} : ${rangJ2 ? `No.${rangJ2}` : '**Non classé**'}\n\n*Note : S'ils ne sont pas classés, utilisez d'abord \`/leaderboard modifier\` pour les ajouter.*` 
+                    content: `❌ Impossible d'inverser. Les deux joueurs doivent déjà posséder un rang.\n• Rang de ${j1} : ${rangJ1 ? `No.${rangJ1}` : '**Non classé**'}\n• Rang de ${j2} : ${rangJ2 ? `No.${rangJ2}` : '**Non classé**'}` 
                 });
             }
 
@@ -225,25 +256,37 @@ module.exports = {
 
             lbData.markModified('ranks');
             await lbData.save();
-            await updateLiveEmbed(interaction.client, lbData);
+
+            const updated = await updateLiveEmbed(interaction.client, lbData);
+
+            const statusEmbed = updated 
+                ? '\n🟢 Embed Discord mis à jour !' 
+                : '\n⚠️ **Attention :** Modifié en BDD mais l\'embed Discord n\'a pas pu être édité. Utilisez `/leaderboard connecter`.';
 
             return interaction.editReply({ 
-                content: `🔄 Échange effectué avec succès !\n• <@${j1.id}> passe du rang **No.${rangJ1}** au **No.${rangJ2}**.\n• <@${j2.id}> passe du rang **No.${rangJ2}** au **No.${rangJ1}**.` 
+                content: `🔄 Échange effectué avec succès !\n• <@${j1.id}> passe du rang **No.${rangJ1}** au **No.${rangJ2}**.\n• <@${j2.id}> passe du rang **No.${rangJ2}** au **No.${rangJ1}**.` + statusEmbed 
             });
         }
     }
 };
 
-// Fonction interne pour actualiser instantanément l'embed d'affichage
+// Mettre à jour l'embed sans refaire planter Discord avec les fichiers joints
 async function updateLiveEmbed(client, lbData) {
-    if (!lbData.messageId || !lbData.channelId) return;
+    if (!lbData.messageId || !lbData.channelId) return false;
     try {
         const channel = await client.channels.fetch(lbData.channelId);
+        if (!channel) return false;
+        
         const message = await channel.messages.fetch(lbData.messageId);
-        const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
+        if (!message) return false;
+
         const newEmbed = buildLBEmbed(lbData.ranks);
-        await message.edit({ embeds: [newEmbed], files: [logo] });
+        
+        // Mise à jour de l'embed uniquement (sans re-re-uploader l'image qui fait tout crash)
+        await message.edit({ embeds: [newEmbed] });
+        return true;
     } catch (e) {
-        console.error('[ERREUR MISE A JOUR LB LIVE]', e.message);
+        console.error('[ERREUR LB EDIT]', e.message);
+        return false;
     }
 }
