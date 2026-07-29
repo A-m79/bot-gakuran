@@ -62,20 +62,30 @@ function buildLBEmbed(ranks) {
         .setTimestamp();
 }
 
+// Récupère l'unique document MongoDB et nettoie automatiquement tous les doublons parasites
 async function getLeaderboardDoc() {
-    let lb = await Leaderboard.findOne();
-    if (!lb) {
+    const docs = await Leaderboard.find();
+    
+    if (docs.length === 0) {
         const defaultRanks = {};
         for (let i = 1; i <= 10; i++) {
             defaultRanks[i.toString()] = { userId: null, style: 'Vide' };
         }
-        lb = await Leaderboard.create({
+        return await Leaderboard.create({
             messageId: null,
             channelId: null,
             ranks: defaultRanks
         });
     }
-    return lb;
+
+    // S'il y a plusieurs documents en base, on garde celui qui a un messageId actif et on supprime les autres !
+    if (docs.length > 1) {
+        const validDoc = docs.find(d => d.messageId) || docs[0];
+        await Leaderboard.deleteMany({ _id: { $ne: validDoc._id } });
+        return validDoc;
+    }
+
+    return docs[0];
 }
 
 // Mise à jour live de l'embed sur Discord
@@ -92,7 +102,6 @@ async function updateLiveEmbed(client, lbData) {
 
         const newEmbed = buildLBEmbed(lbData.ranks);
         
-        // Édition simple de l'embed (Discord garde automatiquement logo.png déjà attaché)
         await message.edit({ embeds: [newEmbed] });
         return { success: true };
     } catch (e) {
@@ -203,8 +212,7 @@ module.exports = {
             
             try {
                 const targetMsg = await interaction.channel.messages.fetch(msgId);
-                let lbData = await Leaderboard.findOne();
-                if (!lbData) lbData = await getLeaderboardDoc();
+                const lbData = await getLeaderboardDoc();
 
                 lbData.messageId = targetMsg.id;
                 lbData.channelId = targetMsg.channelId;
