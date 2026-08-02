@@ -37,6 +37,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildPresences, // 👈 Seule modif : nécessaire pour la détection d'activité / Spotify / Jeux du /info
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
