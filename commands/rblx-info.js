@@ -10,7 +10,6 @@ const {
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Nettoyage automatique du cache toutes les 10 minutes pour éviter toute fuite RAM
 setInterval(() => {
     const now = Date.now();
     for (const [key, value] of cache.entries()) {
@@ -30,19 +29,28 @@ async function fetchWithRetry(url, options = {}, retries = 3, backoff = 1000) {
         }
     }
 
-    try {
-        const response = await fetch(url, options);
+    // Ajout systématique du User-Agent pour éviter le blocage 403 Forbidden par Roblox
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        ...(options.headers || {})
+    };
 
-        // Gestion explicite du Rate Limit Roblox (429)
+    const fetchOptions = { ...options, headers };
+
+    try {
+        const response = await fetch(url, fetchOptions);
+
+        // Gestion du Rate Limit Roblox (429)
         if (response.status === 429 && retries > 0) {
             console.warn(`[ROBLOX RATE LIMIT] 429 sur ${url}. Pause de ${backoff}ms...`);
             await new Promise(res => setTimeout(res, backoff));
             return fetchWithRetry(url, options, retries - 1, backoff * 2);
         }
 
-        // Erreur HTTP (404, 400, 500, etc.) -> exception immédiate
+        // Erreur HTTP (404, 403, 400, 500, etc.) -> Exception explicite
         if (!response.ok) {
-            throw new Error(`HTTP Error ${response.status}`);
+            throw new Error(`HTTP Error ${response.status} sur ${url}`);
         }
 
         const data = await response.json();
@@ -54,11 +62,11 @@ async function fetchWithRetry(url, options = {}, retries = 3, backoff = 1000) {
         return data;
 
     } catch (err) {
-        // Fast-fail: ne PAS retry si c'est une erreur HTTP définitive (ex: 404, 400)
+        // Ne retry pas sur les erreurs HTTP définitives (404, 403, 400)
         if (err.message.startsWith('HTTP Error') || retries <= 0) {
             throw err;
         }
-        // Retry uniquement si c'est une vraie erreur de connexion réseau (ex: ECONNRESET, Timeout)
+        // Retry uniquement sur de vraies coupures réseau
         await new Promise(res => setTimeout(res, backoff));
         return fetchWithRetry(url, options, retries - 1, backoff * 2);
     }
@@ -232,12 +240,11 @@ module.exports = {
 
         } catch (error) {
             console.error('[ERREUR ROBLOX LOOKUP]', error);
-            return interaction.editReply({ content: '❌ **Erreur système** : Impossible de contacter l\'API Roblox.' });
+            return interaction.editReply({ content: `❌ **Erreur système** : Impossible de contacter l'API Roblox (${error.message}).` });
         }
     },
 
     async handleButton(interaction) {
-        // Réponse publique visible dans le salon par tout le monde
         await interaction.deferReply();
 
         // ─── MODE 1 : ANALYSE CROISÉE (Alt vs Main) ───
@@ -351,7 +358,7 @@ module.exports = {
 
             } catch (err) {
                 console.error(err);
-                return interaction.editReply({ content: '❌ Erreur lors de l\'analyse croisée.' });
+                return interaction.editReply({ content: `❌ Erreur lors de l'analyse croisée (${err.message}).` });
             }
         }
 
@@ -387,7 +394,7 @@ module.exports = {
                     riskScore += 20;
                     breakdown.push(`> 🟠 **Ancienneté :** Récent (\`${ageInDays}j\`) ➔ **+20%**`);
                 } else {
-                    breakdown.push(`> 🟢 **Ancienneté :** Compte established (\`${Math.floor(ageInDays / 365)} an(s)\`) ➔ **+0%**`);
+                    breakdown.push(`> 🟢 **Ancienneté :** Compte établi (\`${Math.floor(ageInDays / 365)} an(s)\`) ➔ **+0%**`);
                 }
 
                 // 2. ACTIVITÉ DE JEU (BADGES)
@@ -452,7 +459,7 @@ module.exports = {
 
             } catch (error) {
                 console.error(error);
-                return interaction.editReply({ content: '❌ Erreur lors de l\'analyse.' });
+                return interaction.editReply({ content: `❌ Erreur lors de l'analyse (${error.message}).` });
             }
         }
     }
