@@ -55,7 +55,6 @@ const giveawayModule = {
 
         const sub = interaction.options.getSubcommand();
 
-        // ─── SOUS-COMMANDE : LISTE ───
         if (sub === 'liste') {
             const activeGiveaways = await Giveaway.find({ ended: false });
             if (!activeGiveaways || activeGiveaways.length === 0) {
@@ -65,7 +64,7 @@ const giveawayModule = {
             const embed = new EmbedBuilder()
                 .setTitle('🎉 Giveaways en cours — Gurenkai V2')
                 .setColor('#FF2A7A')
-                .setDescription('Voici la liste de tous les concours actuellement actifs sur le serveur :')
+                .setDescription('Voici la liste de tous les concours actifs sur le serveur :')
                 .setTimestamp();
 
             let fieldsList = '';
@@ -82,7 +81,6 @@ const giveawayModule = {
             return interaction.editReply({ embeds: [embed] });
         }
 
-        // Pour les autres commandes, vérifier les permissions Staff
         const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à gérer les giveaways." });
 
@@ -102,12 +100,14 @@ const giveawayModule = {
             const logo = fs.existsSync(logoPath) ? new AttachmentBuilder(logoPath, { name: 'logo.png' }) : null;
 
             const embed = new EmbedBuilder()
-                .setTitle(`🎉 NOUVEAU GIVEAWAY : ${prize}`)
-                .setDescription(`Un nouveau concours exceptionnel vient de débuter ! Tente ta chance en cliquant sur le bouton ci-dessous.\n\n` +
-                              `🎁 **Lot :** \`${prize}\`\n` +
-                              `👥 **Gagnants prévus :** \`${winnersCount}\`\n` +
-                              `⏳ **Fin du concours :** <t:${Math.floor(endsAt / 1000)}:R> (<t:${Math.floor(endsAt / 1000)}:f>)\n` +
-                              `👤 **Organisé par :** <@${interaction.user.id}>`)
+                .setTitle(`🎉 GIVEAWAY EXCLUSIF`)
+                .setDescription(
+                    `### 🎁 ${prize}\n` +
+                    `Un nouveau concours vient d'être lancé ! Tente ta chance en cliquant sur le bouton ci-dessous.\n\n` +
+                    `> 👥 **Gagnants :** \`${winnersCount}\`\n` +
+                    `> ⏳ **Fin :** <t:${Math.floor(endsAt / 1000)}:R> (<t:${Math.floor(endsAt / 1000)}:f>)\n` +
+                    `> 👤 **Par :** <@${interaction.user.id}>`
+                )
                 .setColor('#FF2A7A')
                 .setFooter({ text: '0 Participant(s) • Gurenkai Gang V2' })
                 .setTimestamp(endsAt);
@@ -298,9 +298,13 @@ const giveawayModule = {
 
             if (!gw.participants || gw.participants.length < 2) {
                 const cancelledEmbed = new EmbedBuilder()
-                    .setTitle(`❌ GIVEAWAY ANNULÉ : ${gw.prize}`)
+                    .setTitle(`❌ GIVEAWAY ANNULÉ`)
                     .setColor('#ED4245')
-                    .setDescription(`🎁 **Lot :** ${gw.prize}\n👤 **Organisé par :** <@${gw.hostId}>\n⚠️ **Statut :** Annulé (Moins de 2 participants requis)`)
+                    .setDescription(
+                        `### 🎁 ${gw.prize}\n` +
+                        `> 👤 **Par :** <@${gw.hostId}>\n` +
+                        `> ⚠️ **Statut :** Annulé (Moins de 2 participants)`
+                    )
                     .setFooter({ text: `${gw.participants ? gw.participants.length : 0} Participant(s) • Gurenkai Gang V2` })
                     .setTimestamp();
 
@@ -331,9 +335,13 @@ const giveawayModule = {
             }
 
             const endEmbed = new EmbedBuilder()
-                .setTitle(`🎉 GIVEAWAY TERMINÉ : ${gw.prize}`)
+                .setTitle(`🎉 GIVEAWAY TERMINÉ`)
                 .setColor('#2F3136')
-                .setDescription(`🎁 **Lot :** ${gw.prize}\n👤 **Organisé par :** <@${gw.hostId}>\n🏆 **Gagnant(s) :** ${winners.map(id => `<@${id}>`).join(', ')}`)
+                .setDescription(
+                    `### 🎁 ${gw.prize}\n` +
+                    `> 👤 **Par :** <@${gw.hostId}>\n` +
+                    `> 🏆 **Gagnant(s) :** ${winners.map(id => `<@${id}>`).join(', ')}`
+                )
                 .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai Gang V2` })
                 .setTimestamp();
 
