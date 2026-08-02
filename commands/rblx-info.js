@@ -6,7 +6,6 @@ const {
     ButtonStyle 
 } = require('discord.js');
 
-// Fonction pour générer une barre de progression visuelle en caractères Unicode
 function generateProgressBar(percent) {
     const totalBlocks = 10;
     const filledBlocks = Math.round((percent / 100) * totalBlocks);
@@ -30,7 +29,6 @@ module.exports = {
         const username = interaction.options.getString('username');
 
         try {
-            // 1. Recherche de l'ID Roblox via le pseudo
             const searchRes = await fetch('https://users.roblox.com/v1/usernames/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -47,7 +45,6 @@ module.exports = {
 
             const userId = searchData.data[0].id;
 
-            // 2. Récupération des détails et statut en ligne
             const [userRes, avatarRes, friendsRes, followersRes, followingsRes, presenceRes] = await Promise.all([
                 fetch(`https://users.roblox.com/v1/users/${userId}`),
                 fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`),
@@ -68,24 +65,22 @@ module.exports = {
             const followingsData = await followingsRes.json();
             const presenceData = await presenceRes.json();
 
-            // Variables de profil
             const displayName = userData.displayName || userData.name;
             const description = (userData.description && userData.description.trim() !== '') 
                 ? userData.description 
                 : 'Aucune description renseignée.';
             const createdTimestamp = Math.floor(new Date(userData.created).getTime() / 1000);
             const avatarUrl = avatarData.data && avatarData.data[0] ? avatarData.data[0].imageUrl : null;
-            const isBanned = userData.isBanned ? '🔴 **Banni**' : '🟢 **Actif (Non Banni)**';
+            const isBanned = userData.isBanned ? '🔴 **Banni**' : '🟢 **Actif**';
 
-            let presenceStatus = '⚪ Hors ligne';
+            let presenceStatus = '⚪ **Hors ligne**';
             if (presenceData.userPresences && presenceData.userPresences[0]) {
                 const type = presenceData.userPresences[0].userPresenceType;
-                if (type === 1) presenceStatus = '🟢 En ligne (Site)';
-                else if (type === 2) presenceStatus = '🎮 En jeu';
-                else if (type === 3) presenceStatus = '🛠️ Sur Roblox Studio';
+                if (type === 1) presenceStatus = '🟢 **En ligne (Site)**';
+                else if (type === 2) presenceStatus = '🎮 **En jeu**';
+                else if (type === 3) presenceStatus = '🛠️ **Sur Roblox Studio**';
             }
 
-            // Embed Profil Principal
             const embed = new EmbedBuilder()
                 .setTitle(`🎮 GURENKAI • PROFIL ROBLOX`)
                 .setColor('#FF2A7A')
@@ -96,17 +91,18 @@ module.exports = {
                     `> 🏷️ **Nom d'utilisateur :** \`@${userData.name}\`\n` +
                     `> 🆔 **ID Roblox :** \`${userId}\`\n` +
                     `> 🌐 **Activité :** ${presenceStatus}\n` +
-                    `> 🛡️ **Statut :** ${isBanned}\n` +
-                    `> 📅 **Membre depuis :** <t:${createdTimestamp}:D> (<t:${createdTimestamp}:R>)\n\n` +
+                    `> 🛡️ **Statut du compte :** ${isBanned}\n` +
+                    `> 📅 **Création :** <t:${createdTimestamp}:D> (<t:${createdTimestamp}:R>)\n\n` +
                     `### 📊 Statistiques & Réseau\n` +
-                    `> 👥 **Amis :** \`${friendsData.count ?? 0}\`  •  📡 **Abonnés :** \`${followersData.count ?? 0}\`  •  ➕ **Abonnements :** \`${followingsData.count ?? 0}\`\n\n` +
+                    `> 👥 **Amis :** \`${friendsData.count ?? 0}\`\n` +
+                    `> 📡 **Abonnés :** \`${followersData.count ?? 0}\`\n` +
+                    `> ➕ **Abonnements :** \`${followingsData.count ?? 0}\`\n\n` +
                     `### 📝 Bio / Description\n` +
-                    `\`\`\`fix\n${description.length > 400 ? description.substring(0, 400) + '...' : description}\n\`\`\``
+                    `\`\`\`text\n${description.length > 350 ? description.substring(0, 350) + '...' : description}\n\`\`\``
                 )
                 .setFooter({ text: 'Gurenkai V2 • Roblox Intelligence', iconURL: interaction.guild.iconURL() })
                 .setTimestamp();
 
-            // Boutons d'action (Liens + Bouton d'analyse d'Alt)
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setLabel('Profil Roblox')
@@ -132,7 +128,6 @@ module.exports = {
         }
     },
 
-    // Gestionnaire du bouton de détection d'Alt
     async handleButton(interaction) {
         if (!interaction.customId || !interaction.customId.startsWith('rblx_alt_')) return;
 
@@ -141,7 +136,6 @@ module.exports = {
         const userId = interaction.customId.replace('rblx_alt_', '');
 
         try {
-            // Récupération des données nécessaires au calcul
             const [userRes, friendsRes, followersRes, followingsRes] = await Promise.all([
                 fetch(`https://users.roblox.com/v1/users/${userId}`),
                 fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`),
@@ -154,118 +148,106 @@ module.exports = {
             const followersCount = (await followersRes.json()).count ?? 0;
             const followingsCount = (await followingsRes.json()).count ?? 0;
 
-            // --- CALCULATEUR DE RISQUE D'ALT ---
             let riskScore = 0;
             const breakdown = [];
 
-            // 1. Âge du compte (Création)
             const createdDate = new Date(userData.created);
             const ageInDays = Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
 
             if (ageInDays < 7) {
                 riskScore += 45;
-                breakdown.push(`> 🔴 **Âge du compte :** Très récent (\`${ageInDays}j\`) ➔ **+45%**`);
+                breakdown.push(`> 🔴 **Ancienneté :** Ultra récent (\`${ageInDays} jour(s)\`) ➔ **+45%**`);
             } else if (ageInDays < 30) {
                 riskScore += 35;
-                breakdown.push(`> 🔴 **Âge du compte :** Récent (\`${ageInDays}j\`) ➔ **+35%**`);
+                breakdown.push(`> 🔴 **Ancienneté :** Récent (\`${ageInDays} jour(s)\`) ➔ **+35%**`);
             } else if (ageInDays < 90) {
                 riskScore += 25;
-                breakdown.push(`> 🟠 **Âge du compte :** Moins de 3 mois (\`${ageInDays}j\`) ➔ **+25%**`);
+                breakdown.push(`> 🟠 **Ancienneté :** Moins de 3 mois (\`${ageInDays}j\`) ➔ **+25%**`);
             } else if (ageInDays < 180) {
                 riskScore += 15;
-                breakdown.push(`> 🟡 **Âge du compte :** Moins de 6 mois (\`${ageInDays}j\`) ➔ **+15%**`);
+                breakdown.push(`> 🟡 **Ancienneté :** Moins de 6 mois (\`${ageInDays}j\`) ➔ **+15%**`);
             } else if (ageInDays < 365) {
                 riskScore += 8;
-                breakdown.push(`> 🟢 **Âge du compte :** Moins d'un an (\`${ageInDays}j\`) ➔ **+8%**`);
+                breakdown.push(`> 🟢 **Ancienneté :** Moins d'un an (\`${ageInDays}j\`) ➔ **+8%**`);
             } else {
-                breakdown.push(`> 🟢 **Âge du compte :** Ancien (\`${Math.floor(ageInDays / 365)} an(s)\`) ➔ **+0%**`);
+                breakdown.push(`> 🟢 **Ancienneté :** Compte ancien (\`${Math.floor(ageInDays / 365)} an(s)\`) ➔ **+0%**`);
             }
 
-            // 2. Nombre d'Amis
             if (friendsCount === 0) {
                 riskScore += 25;
-                breakdown.push(`> 🔴 **Réseau d'amis :** Aucun ami (\`0\`) ➔ **+25%**`);
+                breakdown.push(`> 🔴 **Amis :** Aucun ami (\`0\`) ➔ **+25%**`);
             } else if (friendsCount <= 5) {
                 riskScore += 18;
-                breakdown.push(`> 🟠 **Réseau d'amis :** Faible (\`${friendsCount} amis\`) ➔ **+18%**`);
+                breakdown.push(`> 🟠 **Amis :** Très faible (\`${friendsCount}\`) ➔ **+18%**`);
             } else if (friendsCount <= 15) {
                 riskScore += 10;
-                breakdown.push(`> 🟡 **Réseau d'amis :** Modéré (\`${friendsCount} amis\`) ➔ **+10%**`);
+                breakdown.push(`> 🟡 **Amis :** Modéré (\`${friendsCount}\`) ➔ **+10%**`);
             } else {
-                breakdown.push(`> 🟢 **Réseau d'amis :** Actif (\`${friendsCount} amis\`) ➔ **+0%**`);
+                breakdown.push(`> 🟢 **Amis :** Réseau actif (\`${friendsCount}\`) ➔ **+0%**`);
             }
 
-            // 3. Followers / Followings
             if (followersCount === 0 && followingsCount === 0) {
                 riskScore += 15;
-                breakdown.push(`> 🔴 **Abonnés & Suivis :** Inexistants (\`0/0\`) ➔ **+15%**`);
+                breakdown.push(`> 🔴 **Abonnés/Suivis :** Inexistants (\`0/0\`) ➔ **+15%**`);
             } else if (followersCount < 3 && followingsCount < 3) {
                 riskScore += 8;
-                breakdown.push(`> 🟡 **Abonnés & Suivis :** Faibles (\`${followersCount}/${followingsCount}\`) ➔ **+8%**`);
+                breakdown.push(`> 🟡 **Abonnés/Suivis :** Faibles (\`${followersCount}/${followingsCount}\`) ➔ **+8%**`);
             } else {
-                breakdown.push(`> 🟢 **Abonnés & Suivis :** Présents (\`${followersCount}/${followingsCount}\`) ➔ **+0%**`);
+                breakdown.push(`> 🟢 **Abonnés/Suivis :** Présents (\`${followersCount}/${followingsCount}\`) ➔ **+0%**`);
             }
 
-            // 4. Biographie
             if (!userData.description || userData.description.trim() === '') {
                 riskScore += 10;
-                breakdown.push(`> 🟡 **Biographie :** Non renseignée (Vierge) ➔ **+10%**`);
-            } else if (userData.description.length < 15) {
-                riskScore += 5;
-                breakdown.push(`> 🟢 **Biographie :** Très courte ➔ **+5%**`);
+                breakdown.push(`> 🟡 **Biographie :** Non renseignée ➔ **+10%**`);
             } else {
-                breakdown.push(`> 🟢 **Biographie :** Complétée ➔ **+0%**`);
+                breakdown.push(`> 🟢 **Biographie :** Renseignée ➔ **+0%**`);
             }
 
-            // 5. Analyse du motif de Pseudo (Regex de détection de pattern d'Alt)
             const hasAltPattern = /^(alt|test|user|guest|\d{6,})/i.test(userData.name);
             if (hasAltPattern) {
                 riskScore += 5;
-                breakdown.push(`> ⚠️ **Motif d'identifiant :** Nom générique ou suspect ➔ **+5%**`);
+                breakdown.push(`> ⚠️ **Nom d'utilisateur :** Pattern générique/suspect ➔ **+5%**`);
             }
 
-            // Plafonner le résultat final à 99% max
             const finalScore = Math.min(riskScore, 99);
             const progressBar = generateProgressBar(finalScore);
 
-            // Détermination du niveau de menace et de la couleur
             let riskLevel = '';
-            let color = '#57F287'; // Vert par défaut
+            let color = '#57F287';
             let recommendation = '';
 
             if (finalScore >= 75) {
-                riskLevel = '🔴 **RISQUE CRITIQUE (Très Forte Probabilité d\'Alt)**';
+                riskLevel = '🔴 **RISQUE CRITIQUE (Alt Trés Probable)**';
                 color = '#ED4245';
-                recommendation = '⚠️ **Recommandation :** Ce compte coche presque tous les critères d\'un compte secondaire/Alt. Prudence extrême recommandée.';
+                recommendation = '⚠️ **Recommandation :** Ce compte cumule la majorité des critères d\'un compte secondaire.';
             } else if (finalScore >= 50) {
-                riskLevel = '🟠 **RISQUE ÉLEVÉ (Probabilité d\'Alt Élevée)**';
+                riskLevel = '🟠 **RISQUE ÉLEVÉ (Probabilité Forte)**';
                 color = '#E67E22';
-                recommendation = '⚠️ **Recommandation :** Compte présentant plusieurs anomalies (récent ou sans activité sociale). À surveiller.';
+                recommendation = '⚠️ **Recommandation :** Compte suspect présentant plusieurs anomalies d\'activité.';
             } else if (finalScore >= 25) {
-                riskLevel = '🟡 **RISQUE MODÉRÉ (Compte Suspect)**';
+                riskLevel = '🟡 **RISQUE MODÉRÉ (Prudence)**';
                 color = '#F1C40F';
-                recommendation = 'ℹ️ **Recommandation :** Risque faible à moyen. Quelques indicateurs sont absents mais rien d\'alarmant.';
+                recommendation = 'ℹ️ **Recommandation :** Risque modéré. Quelques indicateurs manquants.';
             } else {
-                riskLevel = '🟢 **RISQUE FAIBLE (Compte Principal Probable)**';
+                riskLevel = '🟢 **RISQUE FAIBLE (Compte Légitime)**';
                 color = '#57F287';
-                recommendation = '✅ **Recommandation :** Ce compte possède une ancienneté et une activité sociale normales.';
+                recommendation = '✅ **Recommandation :** Compte ancien avec une activité et un réseau normaux.';
             }
 
-            // Construction de l'embed d'analyse
             const auditEmbed = new EmbedBuilder()
                 .setTitle(`🛡️ GURENKAI • AUDIT DE DÉTECTION D'ALT`)
                 .setColor(color)
                 .setDescription(
-                    `Analyse algorithmique de sécurité effectuée pour le profil **@${userData.name}** (\`${userId}\`).\n\n` +
+                    `Rapport d'analyse de sécurité pour **@${userData.name}** (\`${userId}\`)\n\n` +
                     `### 📊 Score de Suspicion\n` +
                     `> ${riskLevel}\n` +
-                    `> \`[${progressBar}]\` **${finalScore}% de probabilité d'être un Alt**\n\n` +
+                    `> \`[${progressBar}]\` **${finalScore}%**\n\n` +
                     `### 🔬 Détail du Calcul Algorithmique\n` +
                     `${breakdown.join('\n')}\n\n` +
-                    `### 💡 Verdict & Recommandation\n` +
+                    `### 💡 Verdict\n` +
                     `> ${recommendation}`
                 )
-                .setFooter({ text: 'Gurenkai Security System • Confidential Audit', iconURL: interaction.guild.iconURL() })
+                .setFooter({ text: 'Gurenkai Security • Rapport Éphémère', iconURL: interaction.guild.iconURL() })
                 .setTimestamp();
 
             return interaction.editReply({ embeds: [auditEmbed] });

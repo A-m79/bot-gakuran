@@ -60,6 +60,14 @@ module.exports = {
         // ─── 2. BOUTONS ───
         if (interaction.isButton()) {
 
+            // 🛡️ DÉTECTEUR D'ALT ROBLOX (/rblx-info)
+            if (interaction.customId.startsWith('rblx_alt_')) {
+                const command = client.commands.get('rblx-info');
+                if (command && command.handleButton) {
+                    return await command.handleButton(interaction);
+                }
+            }
+
             // 📩 CRÉATION DE TICKET
             if (interaction.customId === 'ticket_create') {
                 await interaction.deferReply({ ephemeral: true });
