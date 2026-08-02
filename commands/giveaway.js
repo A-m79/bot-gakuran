@@ -27,7 +27,7 @@ function parseDuration(str) {
 const giveawayModule = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
-        .setDescription('🎉 Gestion des giveaways du gang')
+        .setDescription('🎉 Gestion des giveaways du gang Gurenkai')
         .addSubcommand(sub => sub
             .setName('start')
             .setDescription('Lancer un nouveau giveaway')
@@ -44,15 +44,47 @@ const giveawayModule = {
             .setName('reroll')
             .setDescription('Tirer au sort de nouveaux gagnants pour un giveaway terminé')
             .addStringOption(opt => opt.setName('message_id').setDescription('L\'ID du message du giveaway').setRequired(true))
+        )
+        .addSubcommand(sub => sub
+            .setName('liste')
+            .setDescription('Afficher la liste de tous les giveaways en cours')
         ),
 
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
+        const sub = interaction.options.getSubcommand();
+
+        // ─── SOUS-COMMANDE : LISTE ───
+        if (sub === 'liste') {
+            const activeGiveaways = await Giveaway.find({ ended: false });
+            if (!activeGiveaways || activeGiveaways.length === 0) {
+                return interaction.editReply({ content: '❌ Il n\'y a aucun giveaway en cours actuellement.' });
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle('🎉 Giveaways en cours — Gurenkai V2')
+                .setColor('#FF2A7A')
+                .setDescription('Voici la liste de tous les concours actuellement actifs sur le serveur :')
+                .setTimestamp();
+
+            let fieldsList = '';
+            for (const gw of activeGiveaways) {
+                const messageLink = `https://discord.com/channels/${interaction.guild.id}/${gw.channelId}/${gw.messageId}`;
+                const participantsCount = gw.participants ? gw.participants.length : 0;
+                fieldsList += `• **[🎁 ${gw.prize}](${messageLink})**\n` +
+                              `  - 👥 Participants : \`${participantsCount}\`\n` +
+                              `  - 🏆 Gagnants : \`${gw.winnersCount}\`\n` +
+                              `  - ⏳ Fin : <t:${Math.floor(gw.endsAt / 1000)}:R>\n\n`;
+            }
+
+            embed.addFields({ name: '✨ Concours Actifs', value: fieldsList.trim(), inline: false });
+            return interaction.editReply({ embeds: [embed] });
+        }
+
+        // Pour les autres commandes, vérifier les permissions Staff
         const aLeGrade = interaction.member.roles.cache.some(r => (process.env.AUTHORIZED_ROLE_IDS || '').split(',').map(id => id.trim()).includes(r.id));
         if (!aLeGrade) return interaction.editReply({ content: "❌ Vous n'êtes pas autorisé à gérer les giveaways." });
-
-        const sub = interaction.options.getSubcommand();
 
         if (sub === 'start') {
             const dureeStr = interaction.options.getString('duree');
@@ -70,10 +102,14 @@ const giveawayModule = {
             const logo = fs.existsSync(logoPath) ? new AttachmentBuilder(logoPath, { name: 'logo.png' }) : null;
 
             const embed = new EmbedBuilder()
-                .setTitle(`🎉 GIVEAWAY : ${prize}`)
-                .setDescription(`Cliquez sur le bouton ci-dessous pour participer !\n\n• **Lot :** ${prize}\n• **Nombre de gagnants :** \`${winnersCount}\`\n• **Fin :** <t:${Math.floor(endsAt / 1000)}:R> (<t:${Math.floor(endsAt / 1000)}:f>)\n• **Organisé par :** <@${interaction.user.id}>`)
+                .setTitle(`🎉 NOUVEAU GIVEAWAY : ${prize}`)
+                .setDescription(`Un nouveau concours exceptionnel vient de débuter ! Tente ta chance en cliquant sur le bouton ci-dessous.\n\n` +
+                              `🎁 **Lot :** \`${prize}\`\n` +
+                              `👥 **Gagnants prévus :** \`${winnersCount}\`\n` +
+                              `⏳ **Fin du concours :** <t:${Math.floor(endsAt / 1000)}:R> (<t:${Math.floor(endsAt / 1000)}:f>)\n` +
+                              `👤 **Organisé par :** <@${interaction.user.id}>`)
                 .setColor('#FF2A7A')
-                .setFooter({ text: '0 Participant(s) • Gurenkai' })
+                .setFooter({ text: '0 Participant(s) • Gurenkai Gang V2' })
                 .setTimestamp(endsAt);
 
             if (logo) embed.setThumbnail('attachment://logo.png');
@@ -106,7 +142,7 @@ const giveawayModule = {
                 giveawayModule.endGiveaway(interaction.client, msg.id);
             }, timeLeft);
 
-            return interaction.editReply({ content: `✅ Giveaway lancé dans <#${GIVEAWAY_CHANNEL_ID}> !` });
+            return interaction.editReply({ content: `✅ Giveaway lancé avec succès dans <#${GIVEAWAY_CHANNEL_ID}> !` });
         }
 
         if (sub === 'end') {
@@ -116,7 +152,7 @@ const giveawayModule = {
             if (gw.ended) return interaction.editReply({ content: '⚠️ Ce giveaway est déjà terminé.' });
 
             await giveawayModule.endGiveaway(interaction.client, messageId);
-            return interaction.editReply({ content: '✅ Giveaway terminé instantanément !' });
+            return interaction.editReply({ content: '✅ Giveaway terminé instantanément avec succès !' });
         }
 
         if (sub === 'reroll') {
@@ -135,9 +171,9 @@ const giveawayModule = {
             }
 
             const winnersMention = winners.map(id => `<@${id}>`).join(', ');
-            await channel.send({ content: `🔄 **Nouveau tirage (Reroll) pour "${gw.prize}" !**\nFélicitations à : ${winnersMention} ! 🎉` });
+            await channel.send({ content: `🔄 **Nouveau tirage au sort (Reroll) pour "${gw.prize}" !**\nFélicitations au nouveau gagnant : ${winnersMention} ! 🎉` });
 
-            return interaction.editReply({ content: '✅ Relance effectuée avec succès !' });
+            return interaction.editReply({ content: '✅ Relance (Reroll) effectuée avec succès !' });
         }
     },
 
@@ -180,7 +216,7 @@ const giveawayModule = {
             const count = updatedGw.participants.length;
 
             const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setFooter({ text: `${count} Participant(s) • Gurenkai` });
+                .setFooter({ text: `${count} Participant(s) • Gurenkai Gang V2` });
 
             const updatedBtn = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -194,7 +230,7 @@ const giveawayModule = {
 
             await interaction.message.edit({ embeds: [updatedEmbed], components: [updatedBtn], files });
 
-            return interaction.reply({ content: '🎉 Ta participation au giveaway a bien été enregistrée ! Good luck !', ephemeral: true });
+            return interaction.reply({ content: '🎉 Ta participation au giveaway a bien été enregistrée ! Bonne chance !', ephemeral: true });
         }
 
         if (interaction.customId && interaction.customId.startsWith('gw_leave_confirm_')) {
@@ -220,7 +256,7 @@ const giveawayModule = {
                 const message = await channel.messages.fetch(messageId);
 
                 const updatedEmbed = EmbedBuilder.from(message.embeds[0])
-                    .setFooter({ text: `${count} Participant(s) • Gurenkai` });
+                    .setFooter({ text: `${count} Participant(s) • Gurenkai Gang V2` });
 
                 const updatedBtn = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
@@ -264,8 +300,8 @@ const giveawayModule = {
                 const cancelledEmbed = new EmbedBuilder()
                     .setTitle(`❌ GIVEAWAY ANNULÉ : ${gw.prize}`)
                     .setColor('#ED4245')
-                    .setDescription(`• **Lot :** ${gw.prize}\n• **Organisé par :** <@${gw.hostId}>\n• **Statut :** Annulé (Moins de 2 participants)`)
-                    .setFooter({ text: `${gw.participants ? gw.participants.length : 0} Participant(s) • Gurenkai` })
+                    .setDescription(`🎁 **Lot :** ${gw.prize}\n👤 **Organisé par :** <@${gw.hostId}>\n⚠️ **Statut :** Annulé (Moins de 2 participants requis)`)
+                    .setFooter({ text: `${gw.participants ? gw.participants.length : 0} Participant(s) • Gurenkai Gang V2` })
                     .setTimestamp();
 
                 if (logo) cancelledEmbed.setThumbnail('attachment://logo.png');
@@ -297,8 +333,8 @@ const giveawayModule = {
             const endEmbed = new EmbedBuilder()
                 .setTitle(`🎉 GIVEAWAY TERMINÉ : ${gw.prize}`)
                 .setColor('#2F3136')
-                .setDescription(`• **Lot :** ${gw.prize}\n• **Organisé par :** <@${gw.hostId}>\n• **Gagnant(s) :** ${winners.map(id => `<@${id}>`).join(', ')}`)
-                .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` })
+                .setDescription(`🎁 **Lot :** ${gw.prize}\n👤 **Organisé par :** <@${gw.hostId}>\n🏆 **Gagnant(s) :** ${winners.map(id => `<@${id}>`).join(', ')}`)
+                .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai Gang V2` })
                 .setTimestamp();
 
             if (logo) endEmbed.setThumbnail('attachment://logo.png');
