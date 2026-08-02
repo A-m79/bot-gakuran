@@ -1,4 +1,4 @@
-const { ChannelType } = require('discord.js');
+const { ChannelType, PermissionFlagsBits } = require('discord.js');
 
 // Garde la trace des salons temporaires créés
 const tempChannels = new Set();
@@ -16,12 +16,23 @@ module.exports = {
             const parentCategory = newState.channel.parentId;
 
             try {
-                // Création du salon temporaire dans la même catégorie
+                // Création du salon temporaire avec permissions pour le proprio
                 const tempChannel = await guild.channels.create({
                     name: `🔊 Salon de ${member.displayName}`,
                     type: ChannelType.GuildVoice,
                     parent: parentCategory || null,
                     reason: 'Salon vocal éphémère — Gurenkai V2',
+                    permissionOverwrites: [
+                        {
+                            id: member.id, // Le proprio du salon
+                            allow: [
+                                PermissionFlagsBits.ManageChannels, // Modifier le nom, limite d'utilisateurs, etc.
+                                PermissionFlagsBits.MoveMembers,     // Expulser/déplacer des gens
+                                PermissionFlagsBits.MuteMembers,     // Muter des personnes dans le vocal
+                                PermissionFlagsBits.DeafenMembers,   // Mettre en sourdine
+                            ],
+                        },
+                    ],
                 });
 
                 // On mémorise l'ID du salon
