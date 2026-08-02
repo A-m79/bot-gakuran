@@ -1,11 +1,11 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const Giveaway = require('../models/Giveaway');
 
 module.exports = {
     name: 'interactionCreate',
     async execute(interaction, client) {
 
-        // ─── SÉCURITÉ : Ignorer le menu déroulant du /help (géré directement dans commands/help.js) ───
+        // ─── SÉCURITÉ : Ignorer le menu déroulant du /help ───
         if (interaction.isStringSelectMenu() && interaction.customId === 'help_category_select') return;
 
         // ─── 1. COMMANDES SLASH ───
@@ -59,7 +59,135 @@ module.exports = {
 
         // ─── 2. BOUTONS ───
         if (interaction.isButton()) {
-            
+
+            // 📩 CRÉATION DE TICKET
+            if (interaction.customId === 'ticket_create') {
+                const guild = interaction.guild;
+                const member = interaction.member;
+
+                const existingTicket = guild.channels.cache.find(c => c.name === `ticket-${member.user.username.toLowerCase()}`);
+                if (existingTicket) {
+                    return interaction.reply({ content: `❌ Tu as déjà un ticket ouvert dans ${existingTicket} !`, ephemeral: true });
+                }
+
+                try {
+                    const ticketChannel = await guild.channels.create({
+                        name: `ticket-${member.user.username}`,
+                        type: ChannelType.GuildText,
+                        parent: process.env.TICKET_CATEGORY_ID || null,
+                        permissionOverwrites: [
+                            {
+                                id: guild.roles.everyone.id,
+                                deny: [PermissionFlagsBits.ViewChannel],
+                            },
+                            {
+                                id: member.id,
+                                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory],
+                            },
+                            {
+                                id: client.user.id,
+                                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory],
+                            },
+                        ],
+                    });
+
+                    const embedWelcome = new EmbedBuilder()
+                        .setTitle(`🎫 Ticket de ${member.displayName}`)
+                        .setColor('#FF2A7A')
+                        .setDescription('Bienvenue dans ton ticket !\nExplique ton problème ci-dessous, un membre du Staff va bientôt te prendre en charge.')
+                        .setTimestamp();
+
+                    // Boutons : Fermer + Claim
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('ticket_claim')
+                            .setLabel('🙋‍♂️ Claim le Ticket')
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId('ticket_close')
+                            .setLabel('🔒 Fermer')
+                            .setStyle(ButtonStyle.Danger)
+                    );
+
+                    await ticketChannel.send({ content: `${member} | Staff`, embeds: [embedWelcome], components: [row] });
+                    await interaction.reply({ content: `✅ Ticket créé avec succès : ${ticketChannel}`, ephemeral: true });
+                } catch (err) {
+                    console.error('❌ Erreur création ticket :', err);
+                    await interaction.reply({ content: '❌ Impossible de créer le ticket.', ephemeral: true });
+                }
+                return;
+            }
+
+            // 🙋‍♂️ CLAIM LE TICKET (Réservé Staff)
+            if (interaction.customId === 'ticket_claim') {
+                // Vérification si le membre est Staff (possède la perm Gérer les messages ou Administrateur)
+                if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ content: '❌ Seul le Staff peut claim un ticket.', ephemeral: true });
+                }
+
+                // Désactiver le bouton Claim et mettre à jour l'affichage
+                const oldRow = interaction.message.components[0];
+                const newRow = new ActionRowBuilder().addComponents(
+                    ButtonBuilder.from(oldRow.components[0]).setDisabled(true).setLabel(`Pris par ${interaction.member.displayName}`),
+                    ButtonBuilder.from(oldRow.components[1])
+                );
+
+                await interaction.update({ components: [newRow] });
+                await interaction.channel.send({ content: `> 🛡️ Ce ticket a été pris en charge par **${interaction.user}**. Il s'occupera de toi !` });
+                return;
+            }
+
+            // 🔒 FERMETURE DE TICKET + TRANSCRIPT MP
+            if (interaction.customId === 'ticket_close') {
+                await interaction.reply({ content: '🔒 Génération du transcript et fermeture du ticket dans 5 secondes...' });
+
+                try {
+                    // 1. Récupérer l'historique des messages du salon
+                    const messages = await interaction.channel.messages.fetch({ limit: 100 });
+                    const sortedMessages = Array.from(messages.values()).reverse();
+                    
+                    let transcriptText = `--- TRANSCRIPT DU TICKET : ${interaction.channel.name} ---\n`;
+                    sortedMessages.forEach(m => {
+                        const time = new Date(m.createdTimestamp).toLocaleString();
+                        transcriptText += `[${time}] ${m.author.tag}: ${m.content}\n`;
+                    });
+
+                    const buffer = Buffer.from(transcriptText, 'utf-8');
+                    const attachment = new AttachmentBuilder(buffer, { name: `transcript-${interaction.channel.name}.txt` });
+
+                    // 2. Trouver le membre propriétaire du ticket (non-bot ayant accès au salon)
+                    let targetMember = null;
+                    for (const [id, overwrite] of interaction.channel.permissionOverwrites.cache) {
+                        if (id !== interaction.guild.id && id !== client.user.id) {
+                            const member = await interaction.guild.members.fetch(id).catch(() => null);
+                            if (member && !member.user.bot) {
+                                targetMember = member;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 3. Envoyer le transcript en MP au membre s'il est trouvé
+                    if (targetMember) {
+                        const dmEmbed = new EmbedBuilder()
+                            .setTitle('📜 Transcript de ton Ticket — Gurenkai')
+                            .setColor('#FF2A7A')
+                            .setDescription('Voici ci-joint le récapitulatif textuel de ton ticket qui vient d\'être fermé.')
+                            .setTimestamp();
+
+                        await targetMember.send({ embeds: [dmEmbed], files: [attachment] }).catch(() => null);
+                    }
+                } catch (err) {
+                    console.error('❌ Erreur génération transcript :', err);
+                }
+
+                // 4. Suppression du salon après 5 secondes
+                setTimeout(async () => {
+                    await interaction.channel.delete().catch(() => null);
+                }, 5000);
+                return;
+            }
+
             // Fiche Info Modal Trigger
             if (interaction.customId === 'ouvrir_fiche_modal') {
                 const modal = new ModalBuilder()
