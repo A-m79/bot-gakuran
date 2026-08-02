@@ -62,19 +62,20 @@ module.exports = {
 
             // 📩 CRÉATION DE TICKET
             if (interaction.customId === 'ticket_create') {
+                await interaction.deferReply({ ephemeral: true });
                 const guild = interaction.guild;
                 const member = interaction.member;
 
                 const existingTicket = guild.channels.cache.find(c => c.name === `ticket-${member.user.username.toLowerCase()}`);
                 if (existingTicket) {
-                    return interaction.reply({ content: `❌ Tu as déjà un ticket ouvert dans ${existingTicket} !`, ephemeral: true });
+                    return interaction.editReply({ content: `❌ Tu as déjà un ticket ouvert dans ${existingTicket} !` });
                 }
 
                 try {
                     const ticketChannel = await guild.channels.create({
                         name: `ticket-${member.user.username}`,
                         type: ChannelType.GuildText,
-                        parent: process.env.TICKET_CATEGORY_ID || null,
+                        parent: '1525302551627563098', // ID de la catégorie ticket
                         permissionOverwrites: [
                             {
                                 id: guild.roles.everyone.id,
@@ -97,7 +98,6 @@ module.exports = {
                         .setDescription('Bienvenue dans ton ticket !\nExplique ton problème ci-dessous, un membre du Staff va bientôt te prendre en charge.')
                         .setTimestamp();
 
-                    // Boutons : Fermer + Claim
                     const row = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
                             .setCustomId('ticket_claim')
@@ -110,22 +110,20 @@ module.exports = {
                     );
 
                     await ticketChannel.send({ content: `${member} | Staff`, embeds: [embedWelcome], components: [row] });
-                    await interaction.reply({ content: `✅ Ticket créé avec succès : ${ticketChannel}`, ephemeral: true });
+                    await interaction.editReply({ content: `✅ Ticket créé avec succès : ${ticketChannel}` });
                 } catch (err) {
                     console.error('❌ Erreur création ticket :', err);
-                    await interaction.reply({ content: '❌ Impossible de créer le ticket.', ephemeral: true });
+                    await interaction.editReply({ content: '❌ Impossible de créer le ticket.' });
                 }
                 return;
             }
 
             // 🙋‍♂️ CLAIM LE TICKET (Réservé Staff)
             if (interaction.customId === 'ticket_claim') {
-                // Vérification si le membre est Staff (possède la perm Gérer les messages ou Administrateur)
                 if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                     return interaction.reply({ content: '❌ Seul le Staff peut claim un ticket.', ephemeral: true });
                 }
 
-                // Désactiver le bouton Claim et mettre à jour l'affichage
                 const oldRow = interaction.message.components[0];
                 const newRow = new ActionRowBuilder().addComponents(
                     ButtonBuilder.from(oldRow.components[0]).setDisabled(true).setLabel(`Pris par ${interaction.member.displayName}`),
@@ -142,7 +140,6 @@ module.exports = {
                 await interaction.reply({ content: '🔒 Génération du transcript et fermeture du ticket dans 5 secondes...' });
 
                 try {
-                    // 1. Récupérer l'historique des messages du salon
                     const messages = await interaction.channel.messages.fetch({ limit: 100 });
                     const sortedMessages = Array.from(messages.values()).reverse();
                     
@@ -155,7 +152,6 @@ module.exports = {
                     const buffer = Buffer.from(transcriptText, 'utf-8');
                     const attachment = new AttachmentBuilder(buffer, { name: `transcript-${interaction.channel.name}.txt` });
 
-                    // 2. Trouver le membre propriétaire du ticket (non-bot ayant accès au salon)
                     let targetMember = null;
                     for (const [id, overwrite] of interaction.channel.permissionOverwrites.cache) {
                         if (id !== interaction.guild.id && id !== client.user.id) {
@@ -167,7 +163,6 @@ module.exports = {
                         }
                     }
 
-                    // 3. Envoyer le transcript en MP au membre s'il est trouvé
                     if (targetMember) {
                         const dmEmbed = new EmbedBuilder()
                             .setTitle('📜 Transcript de ton Ticket — Gurenkai')
@@ -181,7 +176,6 @@ module.exports = {
                     console.error('❌ Erreur génération transcript :', err);
                 }
 
-                // 4. Suppression du salon après 5 secondes
                 setTimeout(async () => {
                     await interaction.channel.delete().catch(() => null);
                 }, 5000);
