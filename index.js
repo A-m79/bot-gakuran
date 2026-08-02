@@ -25,6 +25,7 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildVoiceStates, // 👈 Ajouté pour détecter les entrées/sorties vocales
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
