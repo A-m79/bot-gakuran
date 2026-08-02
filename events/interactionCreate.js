@@ -61,7 +61,7 @@ module.exports = {
         if (interaction.isButton()) {
 
             // 🛡️ DÉTECTEUR D'ALT ROBLOX (/rblx-info)
-            if (interaction.customId.startsWith('rblx_alt_')) {
+            if (interaction.customId.startsWith('rblx_alt_') || interaction.customId.startsWith('rblx_compare_')) {
                 const command = client.commands.get('rblx-info');
                 if (command && command.handleButton) {
                     return await command.handleButton(interaction);
