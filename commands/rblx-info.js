@@ -20,7 +20,7 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 // ─── FETCH INTEL / RETRY SYSTEM ───
-async function fetchWithRetry(url, options = {}, retries = 3, backoff = 1000) {
+async function fetchWithRetry(url, options = {}, retries = 2, backoff = 1000) {
     const isGet = !options.method || options.method === 'GET';
     if (isGet && cache.has(url)) {
         const cached = cache.get(url);
@@ -29,7 +29,6 @@ async function fetchWithRetry(url, options = {}, retries = 3, backoff = 1000) {
         }
     }
 
-    // Ajout systématique du User-Agent pour éviter le blocage 403 Forbidden par Roblox
     const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
@@ -41,14 +40,11 @@ async function fetchWithRetry(url, options = {}, retries = 3, backoff = 1000) {
     try {
         const response = await fetch(url, fetchOptions);
 
-        // Gestion du Rate Limit Roblox (429)
         if (response.status === 429 && retries > 0) {
-            console.warn(`[ROBLOX RATE LIMIT] 429 sur ${url}. Pause de ${backoff}ms...`);
             await new Promise(res => setTimeout(res, backoff));
             return fetchWithRetry(url, options, retries - 1, backoff * 2);
         }
 
-        // Erreur HTTP (404, 403, 400, 500, etc.) -> Exception explicite
         if (!response.ok) {
             throw new Error(`HTTP Error ${response.status} sur ${url}`);
         }
@@ -62,14 +58,17 @@ async function fetchWithRetry(url, options = {}, retries = 3, backoff = 1000) {
         return data;
 
     } catch (err) {
-        // Ne retry pas sur les erreurs HTTP définitives (404, 403, 400)
         if (err.message.startsWith('HTTP Error') || retries <= 0) {
             throw err;
         }
-        // Retry uniquement sur de vraies coupures réseau
         await new Promise(res => setTimeout(res, backoff));
         return fetchWithRetry(url, options, retries - 1, backoff * 2);
     }
+}
+
+// Helper pour extraire la valeur d'une promesse Settled
+function getSettledValue(result) {
+    return result.status === 'fulfilled' ? result.value : null;
 }
 
 // ─── FONCTIONS UTILITAIRES ───
@@ -104,31 +103,31 @@ function generateProgressBar(percent) {
 }
 
 async function compareBadges(targetId, mainId) {
-    try {
-        const [targetBadgesRes, mainBadgesRes] = await Promise.all([
-            fetchWithRetry(`https://badges.roblox.com/v1/users/${targetId}/badges?limit=100&sortOrder=Desc`),
-            fetchWithRetry(`https://badges.roblox.com/v1/users/${mainId}/badges?limit=100&sortOrder=Desc`)
-        ]);
+    const [targetBadgesResult, mainBadgesResult] = await Promise.allSettled([
+        fetchWithRetry(`https://badges.roblox.com/v1/users/${targetId}/badges?limit=100&sortOrder=Desc`),
+        fetchWithRetry(`https://badges.roblox.com/v1/users/${mainId}/badges?limit=100&sortOrder=Desc`)
+    ]);
 
-        const targetBadges = targetBadgesRes.data || [];
-        const mainBadges = mainBadgesRes.data || [];
+    const targetBadgesRes = getSettledValue(targetBadgesResult);
+    const mainBadgesRes = getSettledValue(mainBadgesResult);
 
-        const mainBadgeMap = new Map(mainBadges.map(b => [b.id, b.awardedDate]));
-        const commonBadges = [];
+    const targetBadges = targetBadgesRes?.data || [];
+    const mainBadges = mainBadgesRes?.data || [];
 
-        for (const badge of targetBadges) {
-            if (mainBadgeMap.has(badge.id)) {
-                const t1 = new Date(badge.awardedDate).getTime();
-                const t2 = new Date(mainBadgeMap.get(badge.id)).getTime();
-                const diffMinutes = Math.abs(t1 - t2) / (1000 * 60);
-                commonBadges.push({ name: badge.name, diffMinutes });
-            }
+    if (targetBadges.length === 0 || mainBadges.length === 0) return [];
+
+    const mainBadgeMap = new Map(mainBadges.map(b => [b.id, b.awardedDate]));
+    const commonBadges = [];
+
+    for (const badge of targetBadges) {
+        if (mainBadgeMap.has(badge.id)) {
+            const t1 = new Date(badge.awardedDate).getTime();
+            const t2 = new Date(mainBadgeMap.get(badge.id)).getTime();
+            const diffMinutes = Math.abs(t1 - t2) / (1000 * 60);
+            commonBadges.push({ name: badge.name, diffMinutes });
         }
-        return commonBadges;
-    } catch (e) {
-        console.error('[ERREUR COMPARAISON BADGES]', e);
-        return [];
     }
+    return commonBadges;
 }
 
 // ─── COMMANDE DISCORD ───
@@ -166,12 +165,14 @@ module.exports = {
 
             const targetUser = searchData.data[0];
 
-            const [userRes, avatarRes, friendsRes, followersRes, followingsRes, presenceRes, groupsRes, badgesRes] = await Promise.all([
-                fetchWithRetry(`https://users.roblox.com/v1/users/${targetUser.id}`),
+            // Requéte principale (Profil basique)
+            const userRes = await fetchWithRetry(`https://users.roblox.com/v1/users/${targetUser.id}`);
+
+            // Requêtes secondaires exécutées en parallèle avec Promise.allSettled
+            const settledResults = await Promise.allSettled([
                 fetchWithRetry(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${targetUser.id}&size=420x420&format=Png&isCircular=false`),
                 fetchWithRetry(`https://friends.roblox.com/v1/users/${targetUser.id}/friends/count`),
                 fetchWithRetry(`https://friends.roblox.com/v1/users/${targetUser.id}/followers/count`),
-                fetchWithRetry(`https://friends.roblox.com/v1/users/${targetUser.id}/followings/count`),
                 fetchWithRetry('https://presence.roblox.com/v1/presence/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -181,19 +182,28 @@ module.exports = {
                 fetchWithRetry(`https://badges.roblox.com/v1/users/${targetUser.id}/badges?limit=100&sortOrder=Desc`)
             ]);
 
-            const friendsCount = friendsRes.count ?? 0;
-            const followersCount = followersRes.count ?? 0;
-            const groupsCount = groupsRes.data ? groupsRes.data.length : 0;
-            const badgesCount = badgesRes.data ? badgesRes.data.length : 0;
+            const avatarRes = getSettledValue(settledResults[0]);
+            const friendsRes = getSettledValue(settledResults[1]);
+            const followersRes = getSettledValue(settledResults[2]);
+            const presenceRes = getSettledValue(settledResults[3]);
+            const groupsRes = getSettledValue(settledResults[4]);
+            const badgesRes = getSettledValue(settledResults[5]);
+
+            const friendsCount = friendsRes?.count ?? 0;
+            const followersCount = followersRes?.count ?? 0;
+            const groupsCount = groupsRes?.data ? groupsRes.data.length : 0;
+            
+            // Si la requête badges a échoué (ex: 401 ou inventaire privé), on affiche "Privé / Indisponible"
+            const badgesCount = badgesRes?.data ? (badgesRes.data.length >= 100 ? '100+' : badgesRes.data.length) : '🔒 Privé / Non accessible';
 
             const displayName = userRes.displayName || userRes.name;
             const description = (userRes.description && userRes.description.trim() !== '') ? userRes.description : 'Aucune description.';
             const createdTimestamp = Math.floor(new Date(userRes.created).getTime() / 1000);
-            const avatarUrl = avatarRes.data && avatarRes.data[0] ? avatarRes.data[0].imageUrl : null;
+            const avatarUrl = avatarRes?.data?.[0]?.imageUrl || null;
             const isBanned = userRes.isBanned ? '🔴 **Banni**' : '🟢 **Actif**';
 
             let presenceStatus = '⚪ **Hors ligne**';
-            if (presenceRes.userPresences && presenceRes.userPresences[0]) {
+            if (presenceRes?.userPresences?.[0]) {
                 const type = presenceRes.userPresences[0].userPresenceType;
                 if (type === 1) presenceStatus = '🟢 **En ligne (Site)**';
                 else if (type === 2) presenceStatus = '🎮 **En jeu**';
@@ -215,7 +225,7 @@ module.exports = {
                     `### 📊 Statistiques & Activité Jeux\n` +
                     `> 👥 **Amis :** \`${friendsCount}\` | 📡 **Abonnés :** \`${followersCount}\`\n` +
                     `> 🏰 **Groupes rejoints :** \`${groupsCount}\`\n` +
-                    `> 🏅 **Badges débloqués :** \`${badgesCount >= 100 ? '100+' : badgesCount}\`\n\n` +
+                    `> 🏅 **Badges débloqués :** \`${badgesCount}\`\n\n` +
                     `### 📝 Bio / Description\n` +
                     `\`\`\`text\n${description.length > 250 ? description.substring(0, 250) + '...' : description}\n\`\`\``
                 )
@@ -240,7 +250,7 @@ module.exports = {
 
         } catch (error) {
             console.error('[ERREUR ROBLOX LOOKUP]', error);
-            return interaction.editReply({ content: `❌ **Erreur système** : Impossible de contacter l'API Roblox (${error.message}).` });
+            return interaction.editReply({ content: `❌ **Erreur système** : Impossible de trouver cet utilisateur Roblox.` });
         }
     },
 
@@ -265,14 +275,22 @@ module.exports = {
                     return interaction.editReply({ content: `❌ Impossible de trouver le compte principal \`${mainUsername}\`.` });
                 }
 
-                const [targetUser, mainUser, targetFriends, mainFriends, targetGroups, mainGroups] = await Promise.all([
+                const [targetUser, mainUser] = await Promise.all([
                     fetchWithRetry(`https://users.roblox.com/v1/users/${targetId}`),
-                    fetchWithRetry(`https://users.roblox.com/v1/users/${mainData.id}`),
+                    fetchWithRetry(`https://users.roblox.com/v1/users/${mainData.id}`)
+                ]);
+
+                const settledComparisons = await Promise.allSettled([
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${targetId}/friends`),
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${mainData.id}/friends`),
                     fetchWithRetry(`https://groups.roblox.com/v1/users/${targetId}/groups/roles`),
                     fetchWithRetry(`https://groups.roblox.com/v1/users/${mainData.id}/groups/roles`)
                 ]);
+
+                const targetFriends = getSettledValue(settledComparisons[0]);
+                const mainFriends = getSettledValue(settledComparisons[1]);
+                const targetGroups = getSettledValue(settledComparisons[2]);
+                const mainGroups = getSettledValue(settledComparisons[3]);
 
                 let matchScore = 0;
                 const breakdown = [];
@@ -290,8 +308,8 @@ module.exports = {
                 }
 
                 // 2. Amis en Commun
-                const targetFriendsIds = new Set((targetFriends.data || []).map(f => f.id));
-                const mainFriendsIds = (mainFriends.data || []).map(f => f.id);
+                const targetFriendsIds = new Set((targetFriends?.data || []).map(f => f.id));
+                const mainFriendsIds = (mainFriends?.data || []).map(f => f.id);
                 const commonFriends = mainFriendsIds.filter(id => targetFriendsIds.has(id));
 
                 if (commonFriends.length >= 5) {
@@ -305,8 +323,8 @@ module.exports = {
                 }
 
                 // 3. Groupes en Commun
-                const targetGroupIds = new Set((targetGroups.data || []).map(g => g.group.id));
-                const mainGroupIds = (mainGroups.data || []).map(g => g.group.id);
+                const targetGroupIds = new Set((targetGroups?.data || []).map(g => g.group.id));
+                const mainGroupIds = (mainGroups?.data || []).map(g => g.group.id);
                 const commonGroups = mainGroupIds.filter(id => targetGroupIds.has(id));
 
                 if (commonGroups.length >= 2) {
@@ -319,7 +337,7 @@ module.exports = {
                     breakdown.push(`> 🟢 **Aucun groupe commun** ➔ **+0%**`);
                 }
 
-                // 4. Badges en Commun & Proximité Temporelle
+                // 4. Badges en Commun
                 const commonBadges = await compareBadges(targetId, mainData.id);
                 if (commonBadges.length > 0) {
                     const closeInTime = commonBadges.filter(b => b.diffMinutes < 60);
@@ -332,7 +350,7 @@ module.exports = {
                         breakdown.push(`> 🟡 **Badges de jeux en commun :** \`${commonBadges.length}\` badge(s) partagé(s) ➔ **+20%**`);
                     }
                 } else {
-                    breakdown.push(`> 🟢 **Aucun badge commun** ➔ **+0%**`);
+                    breakdown.push(`> 🟢 **Aucun badge commun (ou non accessible)** ➔ **+0%**`);
                 }
 
                 const finalScore = Math.min(matchScore, 99);
@@ -358,7 +376,7 @@ module.exports = {
 
             } catch (err) {
                 console.error(err);
-                return interaction.editReply({ content: `❌ Erreur lors de l'analyse croisée (${err.message}).` });
+                return interaction.editReply({ content: `❌ Erreur lors de l'analyse croisée.` });
             }
         }
 
@@ -367,18 +385,24 @@ module.exports = {
             const userId = interaction.customId.replace('rblx_alt_', '');
 
             try {
-                const [userData, friendsRes, followersRes, groupsRes, badgesRes] = await Promise.all([
-                    fetchWithRetry(`https://users.roblox.com/v1/users/${userId}`),
+                const userData = await fetchWithRetry(`https://users.roblox.com/v1/users/${userId}`);
+
+                const settledAudit = await Promise.allSettled([
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/friends/count`),
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/followers/count`),
                     fetchWithRetry(`https://groups.roblox.com/v1/users/${userId}/groups/roles`),
                     fetchWithRetry(`https://badges.roblox.com/v1/users/${userId}/badges?limit=100&sortOrder=Desc`)
                 ]);
 
-                const friendsCount = friendsRes.count ?? 0;
-                const followersCount = followersRes.count ?? 0;
-                const groupsCount = groupsRes.data ? groupsRes.data.length : 0;
-                const badgesCount = badgesRes.data ? badgesRes.data.length : 0;
+                const friendsRes = getSettledValue(settledAudit[0]);
+                const followersRes = getSettledValue(settledAudit[1]);
+                const groupsRes = getSettledValue(settledAudit[2]);
+                const badgesRes = getSettledValue(settledAudit[3]);
+
+                const friendsCount = friendsRes?.count ?? 0;
+                const followersCount = followersRes?.count ?? 0;
+                const groupsCount = groupsRes?.data ? groupsRes.data.length : 0;
+                const badgesCount = badgesRes?.data ? badgesRes.data.length : null;
 
                 let riskScore = 0;
                 const breakdown = [];
@@ -398,7 +422,9 @@ module.exports = {
                 }
 
                 // 2. ACTIVITÉ DE JEU (BADGES)
-                if (badgesCount === 0) {
+                if (badgesCount === null) {
+                    breakdown.push(`> 🔒 **Badges Jeux :** Non accessible / Privé ➔ **+0%**`);
+                } else if (badgesCount === 0) {
                     riskScore += 30;
                     breakdown.push(`> 🔴 **Badges Jeux :** Aucun badge débloqué (\`0\`) ➔ **+30%**`);
                 } else if (badgesCount < 5) {
@@ -459,7 +485,7 @@ module.exports = {
 
             } catch (error) {
                 console.error(error);
-                return interaction.editReply({ content: `❌ Erreur lors de l'analyse (${error.message}).` });
+                return interaction.editReply({ content: `❌ Erreur lors de l'analyse.` });
             }
         }
     }
