@@ -5,6 +5,9 @@ module.exports = {
     name: 'interactionCreate',
     async execute(interaction, client) {
 
+        // ─── SÉCURITÉ : Ignorer le menu déroulant du /help (géré directement dans commands/help.js) ───
+        if (interaction.isStringSelectMenu() && interaction.customId === 'help_category_select') return;
+
         // ─── 1. COMMANDES SLASH ───
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);

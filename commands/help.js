@@ -14,15 +14,15 @@ module.exports = {
     async execute(interaction) {
         // --- EMBED PRINCIPAL (Accueil) ---
         const mainEmbed = new EmbedBuilder()
-            .setTitle('⛩️ CENTRE D\'AIDE — GURENKAI V2')
+            .setTitle('⛩️ MENU — GURENKAI V2')
             .setColor('#FF2A7A')
             .setDescription(
-                'Bienvenue sur le panneau d\'aide du bot **Gurenkai**.\n' +
+                'Bienvenue sur le menu du bot **Gurenkai**.\n' +
                 'Utilise le **menu déroulant ci-dessous** pour explorer les différentes catégories de commandes disponibles.\n\n' +
                 '> 💡 *Besoin d\'assistance supplémentaire ? Contacte un membre du Staff.*'
             )
             .addFields(
-                { name: '🌐 Général & Utile',       value: '`/ping`, `/info`, `/embed`', inline: true },
+                { name: '🌐 Général & Utilaire',       value: '`/ping`, `/info`, `/embed`', inline: true },
                 { name: '📊 Activité & Événements', value: '`/activitycheck`, `/sondage`, `/evenement`', inline: true },
                 { name: '📜 Absences & Registre',   value: '`/absence`, `/liste-absences`, `/repertoire`', inline: true },
                 { name: '🏆 Gang & Divertissement', value: '`/giveaway`, `/leaderboard`, `/kos`, `/relations`', inline: true }
@@ -36,7 +36,7 @@ module.exports = {
             .setPlaceholder('📂 Choisis une catégorie à afficher...')
             .addOptions([
                 {
-                    label: 'Général & Utile',
+                    label: 'Général & Utilaire',
                     description: 'Informations, latence et création d\'embeds',
                     value: 'cat_general',
                     emoji: '⚙️'
@@ -67,20 +67,23 @@ module.exports = {
         const response = await interaction.reply({
             embeds: [mainEmbed],
             components: [row],
-            ephemeral: true
+            ephemeral: true,
+            withResponse: true
         });
 
-        // --- COLLECTEUR D'INTERACTIONS DU MENU ---
-        const collector = response.createMessageComponentCollector({
+        // --- COLLECTEUR D'INTERACTIONS ---
+        const target = response.resource ? response.resource.message : response;
+        const collector = target.createMessageComponentCollector({
             componentType: ComponentType.StringSelect,
-            time: 120000 // Le menu reste actif 2 minutes
+            filter: i => i.customId === 'help_category_select' && i.user.id === interaction.user.id,
+            time: 120000
         });
 
         collector.on('collect', async i => {
             const selected = i.values[0];
             const updatedEmbed = new EmbedBuilder()
                 .setColor('#FF2A7A')
-                .setFooter({ text: 'Gurenkai Gang • Menu', iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                .setFooter({ text: 'Gurenkai Gang • Menu Interactif V2', iconURL: interaction.guild.iconURL({ dynamic: true }) })
                 .setTimestamp();
 
             switch (selected) {
@@ -90,7 +93,7 @@ module.exports = {
                         .setDescription('Voici les commandes d\'informations générales :')
                         .addFields(
                             { name: '`/ping`', value: 'Affiche la latence du bot et de l\'API Discord.' },
-                            { name: '`/info [@membre]`', value: 'Affiche le profil Discord complet d\'un membre (activité, jeux, rôle).' },
+                            { name: '`/info [@membre]`', value: 'Affiche le profil Discord complet d\'un membre.' },
                             { name: '`/embed`', value: 'Ouvre un formulaire pour créer un message stylisé (réservé Staff).' }
                         );
                     break;
@@ -98,7 +101,7 @@ module.exports = {
                 case 'cat_activity':
                     updatedEmbed
                         .setTitle('📊 Catégorie — Activité & Événements')
-                        .setDescription('Outils d\'organisation :')
+                        .setDescription('Outils de mobilisation et d\'organisation :')
                         .addFields(
                             { name: '`/activitycheck [objectif] [raison]`', value: 'Lance un appel à la mobilisation avec objectif de réactions.' },
                             { name: '`/sondage [question]`', value: 'Crée un vote rapide pour la guilde.' },
@@ -138,7 +141,6 @@ module.exports = {
         });
 
         collector.on('end', async () => {
-            // Désactive le menu déroulant à la fin des 2 minutes
             selectMenu.setDisabled(true);
             const disabledRow = new ActionRowBuilder().addComponents(selectMenu);
             await interaction.editReply({ components: [disabledRow] }).catch(() => null);
