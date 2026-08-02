@@ -11,13 +11,13 @@ module.exports = {
             .setTitle('⛩️ GURENKAI — CENTRE DE SUPPORT & TICKETS')
             .setColor('#FF2A7A')
             .setDescription(
-                '# 💡 Besoin d\'assistance ?\n' +
-                'Un problème en jeu, une question pour le Staff ou une réclamation ? Ne reste pas dans l\'ombre.\n\n' +
+                '# 💡 Une question, un report ou une suggestion ?\n' +
+                'Un problème en jeu, une réclamation ou une idée à partager avec le gang ? N\'hésite pas à nous en faire part.\n\n' +
                 '> 📌 **Clique sur le bouton ci-dessous** pour ouvrir un salon de discussion privé et sécurisé avec l\'équipe.\n\n' +
-                '```ansi\n[31m🔴 Réservé aux membres sérieux du gang[0m\n```'
+                '```ansi\n[31m⚠️ Tout ticket ouvert pour troll ou abus entraînera une sanction.\n```'
             )
-            .setImage('https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3ZydWludXV3ZzV4aGJ2MHR4bnhvbnlncG5ocWxybmd0amV1NHB3eiZlcD12MV9pbngrc2VhcmNoJmZzP2V0Xm5yY3Q9Zw/3ohhwytHcusSCXXOUg/giphy.gif')
-            .setFooter({ text: 'Gurenkai Gang • Système de Tickets V2', iconURL: interaction.guild.iconURL({ dynamic: true }) });
+            .setImage('https://media1.giphy.com/media/uZZVUsUSWxtdpeQoMC/giphy.gif')
+            .setFooter({ text: 'Gurenkai Gang • Système de Tickets', iconURL: interaction.guild.iconURL({ dynamic: true }) });
 
         const button = new ButtonBuilder()
             .setCustomId('ticket_create')
