@@ -6,7 +6,65 @@ const {
     ButtonStyle 
 } = require('discord.js');
 
-// Algorithme de calcul de similarité de texte (Levenshtein) pour les pseudos
+// ─── CACHE MÉMOIRE AVEC AUTO-PURGE ───
+const cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Nettoyage automatique du cache toutes les 10 minutes pour éviter toute fuite RAM
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of cache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+            cache.delete(key);
+        }
+    }
+}, 10 * 60 * 1000);
+
+// ─── FETCH INTEL / RETRY SYSTEM ───
+async function fetchWithRetry(url, options = {}, retries = 3, backoff = 1000) {
+    const isGet = !options.method || options.method === 'GET';
+    if (isGet && cache.has(url)) {
+        const cached = cache.get(url);
+        if (Date.now() - cached.timestamp < CACHE_TTL) {
+            return cached.data;
+        }
+    }
+
+    try {
+        const response = await fetch(url, options);
+
+        // Gestion explicite du Rate Limit Roblox (429)
+        if (response.status === 429 && retries > 0) {
+            console.warn(`[ROBLOX RATE LIMIT] 429 sur ${url}. Pause de ${backoff}ms...`);
+            await new Promise(res => setTimeout(res, backoff));
+            return fetchWithRetry(url, options, retries - 1, backoff * 2);
+        }
+
+        // Erreur HTTP (404, 400, 500, etc.) -> exception immédiate
+        if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (isGet) {
+            cache.set(url, { timestamp: Date.now(), data });
+        }
+
+        return data;
+
+    } catch (err) {
+        // Fast-fail: ne PAS retry si c'est une erreur HTTP définitive (ex: 404, 400)
+        if (err.message.startsWith('HTTP Error') || retries <= 0) {
+            throw err;
+        }
+        // Retry uniquement si c'est une vraie erreur de connexion réseau (ex: ECONNRESET, Timeout)
+        await new Promise(res => setTimeout(res, backoff));
+        return fetchWithRetry(url, options, retries - 1, backoff * 2);
+    }
+}
+
+// ─── FONCTIONS UTILITAIRES ───
 function calculateSimilarity(str1, str2) {
     const s1 = str1.toLowerCase();
     const s2 = str2.toLowerCase();
@@ -37,6 +95,35 @@ function generateProgressBar(percent) {
     return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
 }
 
+async function compareBadges(targetId, mainId) {
+    try {
+        const [targetBadgesRes, mainBadgesRes] = await Promise.all([
+            fetchWithRetry(`https://badges.roblox.com/v1/users/${targetId}/badges?limit=100&sortOrder=Desc`),
+            fetchWithRetry(`https://badges.roblox.com/v1/users/${mainId}/badges?limit=100&sortOrder=Desc`)
+        ]);
+
+        const targetBadges = targetBadgesRes.data || [];
+        const mainBadges = mainBadgesRes.data || [];
+
+        const mainBadgeMap = new Map(mainBadges.map(b => [b.id, b.awardedDate]));
+        const commonBadges = [];
+
+        for (const badge of targetBadges) {
+            if (mainBadgeMap.has(badge.id)) {
+                const t1 = new Date(badge.awardedDate).getTime();
+                const t2 = new Date(mainBadgeMap.get(badge.id)).getTime();
+                const diffMinutes = Math.abs(t1 - t2) / (1000 * 60);
+                commonBadges.push({ name: badge.name, diffMinutes });
+            }
+        }
+        return commonBadges;
+    } catch (e) {
+        console.error('[ERREUR COMPARAISON BADGES]', e);
+        return [];
+    }
+}
+
+// ─── COMMANDE DISCORD ───
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('rblx-info')
@@ -48,7 +135,7 @@ module.exports = {
         )
         .addStringOption(option =>
             option.setName('compte_principal')
-                .setDescription('Optionnel : Pseudo du compte Main suspecté (pour analyse croisée)')
+                .setDescription('Optionnel : Pseudo du Main suspecté (pour analyse croisée)')
                 .setRequired(false)
         ),
 
@@ -59,63 +146,52 @@ module.exports = {
         const mainUsername = interaction.options.getString('compte_principal');
 
         try {
-            // Fetch infos compte principal (target)
-            const searchRes = await fetch('https://users.roblox.com/v1/usernames/users', {
+            const searchData = await fetchWithRetry('https://users.roblox.com/v1/usernames/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
             });
 
-            const searchData = await searchRes.json();
             if (!searchData.data || searchData.data.length === 0) {
                 return interaction.editReply({ content: `❌ **Utilisateur introuvable** : Impossible de trouver \`${username}\`.` });
             }
 
             const targetUser = searchData.data[0];
 
-            // Fetch APIs Roblox (Solo Audit + Groupes + Badges)
             const [userRes, avatarRes, friendsRes, followersRes, followingsRes, presenceRes, groupsRes, badgesRes] = await Promise.all([
-                fetch(`https://users.roblox.com/v1/users/${targetUser.id}`),
-                fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${targetUser.id}&size=420x420&format=Png&isCircular=false`),
-                fetch(`https://friends.roblox.com/v1/users/${targetUser.id}/friends/count`),
-                fetch(`https://friends.roblox.com/v1/users/${targetUser.id}/followers/count`),
-                fetch(`https://friends.roblox.com/v1/users/${targetUser.id}/followings/count`),
-                fetch('https://presence.roblox.com/v1/presence/users', {
+                fetchWithRetry(`https://users.roblox.com/v1/users/${targetUser.id}`),
+                fetchWithRetry(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${targetUser.id}&size=420x420&format=Png&isCircular=false`),
+                fetchWithRetry(`https://friends.roblox.com/v1/users/${targetUser.id}/friends/count`),
+                fetchWithRetry(`https://friends.roblox.com/v1/users/${targetUser.id}/followers/count`),
+                fetchWithRetry(`https://friends.roblox.com/v1/users/${targetUser.id}/followings/count`),
+                fetchWithRetry('https://presence.roblox.com/v1/presence/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userIds: [targetUser.id] })
                 }),
-                fetch(`https://groups.roblox.com/v1/users/${targetUser.id}/groups/roles`),
-                fetch(`https://badges.roblox.com/v1/users/${targetUser.id}/badges?limit=100&sortOrder=Desc`)
+                fetchWithRetry(`https://groups.roblox.com/v1/users/${targetUser.id}/groups/roles`),
+                fetchWithRetry(`https://badges.roblox.com/v1/users/${targetUser.id}/badges?limit=100&sortOrder=Desc`)
             ]);
 
-            const userData = await userRes.json();
-            const avatarData = await avatarRes.json();
-            const friendsCount = (await friendsRes.json()).count ?? 0;
-            const followersCount = (await followersRes.json()).count ?? 0;
-            const followingsCount = (await followingsRes.json()).count ?? 0;
-            const presenceData = await presenceRes.json();
-            const groupsData = await groupsRes.json();
-            const badgesData = await badgesRes.json();
+            const friendsCount = friendsRes.count ?? 0;
+            const followersCount = followersRes.count ?? 0;
+            const groupsCount = groupsRes.data ? groupsRes.data.length : 0;
+            const badgesCount = badgesRes.data ? badgesRes.data.length : 0;
 
-            const groupsCount = groupsData.data ? groupsData.data.length : 0;
-            const badgesCount = badgesData.data ? badgesData.data.length : 0;
-
-            const displayName = userData.displayName || userData.name;
-            const description = (userData.description && userData.description.trim() !== '') ? userData.description : 'Aucune description.';
-            const createdTimestamp = Math.floor(new Date(userData.created).getTime() / 1000);
-            const avatarUrl = avatarData.data && avatarData.data[0] ? avatarData.data[0].imageUrl : null;
-            const isBanned = userData.isBanned ? '🔴 **Banni**' : '🟢 **Actif**';
+            const displayName = userRes.displayName || userRes.name;
+            const description = (userRes.description && userRes.description.trim() !== '') ? userRes.description : 'Aucune description.';
+            const createdTimestamp = Math.floor(new Date(userRes.created).getTime() / 1000);
+            const avatarUrl = avatarRes.data && avatarRes.data[0] ? avatarRes.data[0].imageUrl : null;
+            const isBanned = userRes.isBanned ? '🔴 **Banni**' : '🟢 **Actif**';
 
             let presenceStatus = '⚪ **Hors ligne**';
-            if (presenceData.userPresences && presenceData.userPresences[0]) {
-                const type = presenceData.userPresences[0].userPresenceType;
+            if (presenceRes.userPresences && presenceRes.userPresences[0]) {
+                const type = presenceRes.userPresences[0].userPresenceType;
                 if (type === 1) presenceStatus = '🟢 **En ligne (Site)**';
                 else if (type === 2) presenceStatus = '🎮 **En jeu**';
                 else if (type === 3) presenceStatus = '🛠️ **Sur Roblox Studio**';
             }
 
-            // --- EMBED PROFIL PRINCIPAL ---
             const embed = new EmbedBuilder()
                 .setTitle(`🎮 GURENKAI • PROFIL ROBLOX`)
                 .setColor('#FF2A7A')
@@ -123,8 +199,8 @@ module.exports = {
                 .setDescription(
                     `### 👤 Identité du Joueur\n` +
                     `> 📛 **Display Name :** \`${displayName}\`\n` +
-                    `> 🏷️ **Username :** \`@${userData.name}\`\n` +
-                    `> 🆔 **ID Roblox :** \`${userData.id}\`\n` +
+                    `> 🏷️ **Username :** \`@${userRes.name}\`\n` +
+                    `> 🆔 **ID Roblox :** \`${userRes.id}\`\n` +
                     `> 🌐 **Activité :** ${presenceStatus}\n` +
                     `> 🛡️ **Statut :** ${isBanned}\n` +
                     `> 📅 **Création :** <t:${createdTimestamp}:D> (<t:${createdTimestamp}:R>)\n\n` +
@@ -138,7 +214,6 @@ module.exports = {
                 .setFooter({ text: 'Gurenkai V2 • Roblox Intelligence', iconURL: interaction.guild.iconURL() })
                 .setTimestamp();
 
-            // Bouton dynamique selon si un compte principal a été passé ou non
             const customButtonId = mainUsername 
                 ? `rblx_compare_${targetUser.id}_${encodeURIComponent(mainUsername)}` 
                 : `rblx_alt_${targetUser.id}`;
@@ -162,86 +237,101 @@ module.exports = {
     },
 
     async handleButton(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        // Réponse publique visible dans le salon par tout le monde
+        await interaction.deferReply();
 
-        // MODE 1 : ANALYSE CROISÉE (Alt vs Main)
+        // ─── MODE 1 : ANALYSE CROISÉE (Alt vs Main) ───
         if (interaction.customId.startsWith('rblx_compare_')) {
             const parts = interaction.customId.split('_');
             const targetId = parts[2];
             const mainUsername = decodeURIComponent(parts[3]);
 
             try {
-                // Fetch le compte Main
-                const mainSearch = await fetch('https://users.roblox.com/v1/usernames/users', {
+                const mainSearch = await fetchWithRetry('https://users.roblox.com/v1/usernames/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ usernames: [mainUsername], excludeBannedUsers: false })
                 });
-                const mainData = (await mainSearch.json()).data?.[0];
+                const mainData = mainSearch.data?.[0];
 
                 if (!mainData) {
                     return interaction.editReply({ content: `❌ Impossible de trouver le compte principal \`${mainUsername}\`.` });
                 }
 
-                // API Calls parallèles pour les 2 comptes
                 const [targetUser, mainUser, targetFriends, mainFriends, targetGroups, mainGroups] = await Promise.all([
-                    fetch(`https://users.roblox.com/v1/users/${targetId}`).then(r => r.json()),
-                    fetch(`https://users.roblox.com/v1/users/${mainData.id}`).then(r => r.json()),
-                    fetch(`https://friends.roblox.com/v1/users/${targetId}/friends`).then(r => r.json()),
-                    fetch(`https://friends.roblox.com/v1/users/${mainData.id}/friends`).then(r => r.json()),
-                    fetch(`https://groups.roblox.com/v1/users/${targetId}/groups/roles`).then(r => r.json()),
-                    fetch(`https://groups.roblox.com/v1/users/${mainData.id}/groups/roles`).then(r => r.json())
+                    fetchWithRetry(`https://users.roblox.com/v1/users/${targetId}`),
+                    fetchWithRetry(`https://users.roblox.com/v1/users/${mainData.id}`),
+                    fetchWithRetry(`https://friends.roblox.com/v1/users/${targetId}/friends`),
+                    fetchWithRetry(`https://friends.roblox.com/v1/users/${mainData.id}/friends`),
+                    fetchWithRetry(`https://groups.roblox.com/v1/users/${targetId}/groups/roles`),
+                    fetchWithRetry(`https://groups.roblox.com/v1/users/${mainData.id}/groups/roles`)
                 ]);
 
                 let matchScore = 0;
                 const breakdown = [];
 
-                // 1. Similarité de Pseudo (Levenshtein)
+                // 1. Similarité Pseudos
                 const simScore = calculateSimilarity(targetUser.name, mainUser.name);
                 if (simScore >= 70) {
-                    matchScore += 35;
-                    breakdown.push(`> 🔴 **Pseudos presque identiques :** \`${simScore}%\` de similarité ➔ **+35%**`);
+                    matchScore += 25;
+                    breakdown.push(`> 🔴 **Pseudos presque identiques :** \`${simScore}%\` de similarité ➔ **+25%**`);
                 } else if (simScore >= 40) {
-                    matchScore += 20;
-                    breakdown.push(`> 🟠 **Pseudos similaires :** \`${simScore}%\` de similarité ➔ **+20%**`);
+                    matchScore += 15;
+                    breakdown.push(`> 🟠 **Pseudos similaires :** \`${simScore}%\` de similarité ➔ **+15%**`);
                 } else {
                     breakdown.push(`> 🟢 **Pseudos différents :** \`${simScore}%\` de similarité ➔ **+0%**`);
                 }
 
-                // 2. Amis en Commun (Cross-reference)
+                // 2. Amis en Commun
                 const targetFriendsIds = new Set((targetFriends.data || []).map(f => f.id));
                 const mainFriendsIds = (mainFriends.data || []).map(f => f.id);
                 const commonFriends = mainFriendsIds.filter(id => targetFriendsIds.has(id));
 
                 if (commonFriends.length >= 5) {
-                    matchScore += 40;
-                    breakdown.push(`> 🔴 **Réseau commun massif :** \`${commonFriends.length}\` amis en commun ➔ **+40%**`);
+                    matchScore += 25;
+                    breakdown.push(`> 🔴 **Réseau commun massif :** \`${commonFriends.length}\` amis en commun ➔ **+25%**`);
                 } else if (commonFriends.length >= 1) {
-                    matchScore += 20;
-                    breakdown.push(`> 🟠 **Amis en commun :** \`${commonFriends.length}\` ami(s) partagé(s) ➔ **+20%**`);
+                    matchScore += 15;
+                    breakdown.push(`> 🟠 **Amis en commun :** \`${commonFriends.length}\` ami(s) partagé(s) ➔ **+15%**`);
                 } else {
                     breakdown.push(`> 🟢 **Aucun ami en commun** ➔ **+0%**`);
                 }
 
-                // 3. Groupes en commun (surtout petits groupes)
+                // 3. Groupes en Commun
                 const targetGroupIds = new Set((targetGroups.data || []).map(g => g.group.id));
                 const mainGroupIds = (mainGroups.data || []).map(g => g.group.id);
                 const commonGroups = mainGroupIds.filter(id => targetGroupIds.has(id));
 
                 if (commonGroups.length >= 2) {
-                    matchScore += 25;
-                    breakdown.push(`> 🔴 **Groupes partagés :** Présent dans \`${commonGroups.length}\` mêmes groupes ➔ **+25%**`);
-                } else if (commonGroups.length === 1) {
                     matchScore += 15;
-                    breakdown.push(`> 🟡 **Groupe partagé :** 1 groupe en commun ➔ **+15%**`);
+                    breakdown.push(`> 🔴 **Groupes partagés :** Présent dans \`${commonGroups.length}\` mêmes groupes ➔ **+15%**`);
+                } else if (commonGroups.length === 1) {
+                    matchScore += 10;
+                    breakdown.push(`> 🟡 **Groupe partagé :** 1 groupe en commun ➔ **+10%**`);
                 } else {
                     breakdown.push(`> 🟢 **Aucun groupe commun** ➔ **+0%**`);
+                }
+
+                // 4. Badges en Commun & Proximité Temporelle
+                const commonBadges = await compareBadges(targetId, mainData.id);
+                if (commonBadges.length > 0) {
+                    const closeInTime = commonBadges.filter(b => b.diffMinutes < 60);
+
+                    if (closeInTime.length >= 1) {
+                        matchScore += 40;
+                        breakdown.push(`> 🔴 **Badges à timestamp proche (<1h) :** \`${closeInTime.length}\` badge(s) (ex: "${closeInTime[0].name}" à ${Math.round(closeInTime[0].diffMinutes)}m d'écart) ➔ **+40%**`);
+                    } else {
+                        matchScore += 20;
+                        breakdown.push(`> 🟡 **Badges de jeux en commun :** \`${commonBadges.length}\` badge(s) partagé(s) ➔ **+20%**`);
+                    }
+                } else {
+                    breakdown.push(`> 🟢 **Aucun badge commun** ➔ **+0%**`);
                 }
 
                 const finalScore = Math.min(matchScore, 99);
                 const progressBar = generateProgressBar(finalScore);
 
-                let color = finalScore >= 60 ? '#ED4245' : (finalScore >= 30 ? '#F1C40F' : '#57F287');
+                let color = finalScore >= 60 ? '#ED4245' : (finalScore >= 35 ? '#F1C40F' : '#57F287');
 
                 const compareEmbed = new EmbedBuilder()
                     .setTitle(`⚔️ DÉTECTION CROISÉE D'ALT — GURENKAI`)
@@ -252,7 +342,7 @@ module.exports = {
                         `> \`[${progressBar}]\` **${finalScore}%**\n\n` +
                         `### 🔬 Éléments de Preuve\n` +
                         `${breakdown.join('\n')}\n\n` +
-                        `> 💡 **Verdict :** ${finalScore >= 60 ? '🚨 **Très forte probabilité que ces 2 comptes appartiennent à la même personne.**' : 'ℹ️ Pas assez d d\'éléments pour confirmer un lien direct.'}`
+                        `> 💡 **Verdict :** ${finalScore >= 60 ? '🚨 **Très forte probabilité que ces 2 comptes appartiennent à la même personne.**' : 'ℹ️ Pas assez d\'éléments pour confirmer un lien direct.'}`
                     )
                     .setFooter({ text: 'Gurenkai Security • Analyse Croisée', iconURL: interaction.guild.iconURL() })
                     .setTimestamp();
@@ -265,25 +355,23 @@ module.exports = {
             }
         }
 
-        // MODE 2 : ANALYSE SOLO AVANCÉE (Groupes + Badges + Réseau + Age)
+        // ─── MODE 2 : ANALYSE SOLO ───
         if (interaction.customId.startsWith('rblx_alt_')) {
             const userId = interaction.customId.replace('rblx_alt_', '');
 
             try {
-                const [userData, friendsRes, followersRes, followingsRes, groupsRes, badgesRes] = await Promise.all([
-                    fetch(`https://users.roblox.com/v1/users/${userId}`).then(r => r.json()),
-                    fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`).then(r => r.json()),
-                    fetch(`https://friends.roblox.com/v1/users/${userId}/followers/count`).then(r => r.json()),
-                    fetch(`https://friends.roblox.com/v1/users/${userId}/followings/count`).then(r => r.json()),
-                    fetch(`https://groups.roblox.com/v1/users/${userId}/groups/roles`).then(r => r.json()),
-                    fetch(`https://badges.roblox.com/v1/users/${userId}/badges?limit=100`)
+                const [userData, friendsRes, followersRes, groupsRes, badgesRes] = await Promise.all([
+                    fetchWithRetry(`https://users.roblox.com/v1/users/${userId}`),
+                    fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/friends/count`),
+                    fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/followers/count`),
+                    fetchWithRetry(`https://groups.roblox.com/v1/users/${userId}/groups/roles`),
+                    fetchWithRetry(`https://badges.roblox.com/v1/users/${userId}/badges?limit=100&sortOrder=Desc`)
                 ]);
 
                 const friendsCount = friendsRes.count ?? 0;
                 const followersCount = followersRes.count ?? 0;
-                const followingsCount = followingsRes.count ?? 0;
-                const groupsCount = groupsData.data ? groupsData.data.length : 0;
-                const badgesCount = badgesData.data ? badgesData.data.length : 0;
+                const groupsCount = groupsRes.data ? groupsRes.data.length : 0;
+                const badgesCount = badgesRes.data ? badgesRes.data.length : 0;
 
                 let riskScore = 0;
                 const breakdown = [];
@@ -299,10 +387,10 @@ module.exports = {
                     riskScore += 20;
                     breakdown.push(`> 🟠 **Ancienneté :** Récent (\`${ageInDays}j\`) ➔ **+20%**`);
                 } else {
-                    breakdown.push(`> 🟢 **Ancienneté :** Compte établi (\`${Math.floor(ageInDays / 365)} an(s)\`) ➔ **+0%**`);
+                    breakdown.push(`> 🟢 **Ancienneté :** Compte established (\`${Math.floor(ageInDays / 365)} an(s)\`) ➔ **+0%**`);
                 }
 
-                // 2. ACTIVITÉ DE JEU (BADGES) — Crucial selon l'analyse
+                // 2. ACTIVITÉ DE JEU (BADGES)
                 if (badgesCount === 0) {
                     riskScore += 30;
                     breakdown.push(`> 🔴 **Badges Jeux :** Aucun badge débloqué (\`0\`) ➔ **+30%**`);
@@ -321,7 +409,7 @@ module.exports = {
                     breakdown.push(`> 🟢 **Groupes :** Membre de \`${groupsCount}\` groupe(s) ➔ **+0%**`);
                 }
 
-                // 4. RÉSEAU SOCIAL (Amis / Abonnés)
+                // 4. RÉSEAU SOCIAL
                 if (friendsCount <= 5 && followersCount === 0) {
                     riskScore += 20;
                     breakdown.push(`> 🔴 **Réseau Social :** Isolé (\`${friendsCount}\` amis, 0 abonné) ➔ **+20%**`);
@@ -332,7 +420,7 @@ module.exports = {
                     breakdown.push(`> 🟢 **Réseau Social :** Solide (\`${friendsCount}\` amis) ➔ **+0%**`);
                 }
 
-                // 5. PATTERNS DE PSEUDO DE TROLL / ALT
+                // 5. PATTERNS DE PSEUDOS TROLL / ALT
                 const trollRegex = /(alt|test|troll|user|guest|caca|pipi|fake|bot|suitoi|bellek|\d{5,})/i;
                 if (trollRegex.test(userData.name) || trollRegex.test(userData.displayName || '')) {
                     riskScore += 15;
@@ -357,7 +445,7 @@ module.exports = {
                         `### 🔬 Analyse Multi-Critères (Groupes, Badges, Réseau)\n` +
                         `${breakdown.join('\n')}`
                     )
-                    .setFooter({ text: 'Gurenkai Security • Audit Éphémère', iconURL: interaction.guild.iconURL() })
+                    .setFooter({ text: 'Gurenkai Security • Audit Public', iconURL: interaction.guild.iconURL() })
                     .setTimestamp();
 
                 return interaction.editReply({ embeds: [auditEmbed] });
