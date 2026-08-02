@@ -1,35 +1,22 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { 
-    Client, 
-    GatewayIntentBits, 
-    Collection, 
-    EmbedBuilder, 
-    Partials, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle 
-} = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
-// ─── MODÈLES MONGODB ───
-const Giveaway = require('./models/Giveaway');
-const giveawayModule = require('./commands/giveaway');
-
 // ─── CONNEXION MONGODB ───
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('✅ Connecté à la base de données MongoDB Atlas !'))
-    .catch(err => console.error('❌ Erreur de connexion MongoDB :', err));
+    .then(() => console.log('✅ Connected to MongoDB Atlas!'))
+    .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
-// ─── SERVEUR HTTP (nécessaire pour Render / hébergement 24h/24) ───
+// ─── SERVEUR HTTP ───
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('✅ Bot Gakuran en ligne !'));
-app.listen(PORT, () => console.log(`🌐 Serveur HTTP actif sur le port ${PORT}`));
+app.get('/', (req, res) => res.send('✅ Bot Gurenkai V2 Online!'));
+app.listen(PORT, () => console.log(`🌐 HTTP Server running on port ${PORT}`));
 
-// ─── BOT DISCORD ───
+// ─── CLIENT DISCORD ───
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -37,381 +24,34 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildPresences, // 👈 Seule modif : nécessaire pour la détection d'activité / Spotify / Jeux du /info
+        GatewayIntentBits.GuildPresences,
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
 client.commands = new Collection();
 
+// ─── CHARGEMENT DES COMMANDES ───
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
-
 for (const file of commandFiles) {
     const command = require(path.join(commandsPath, file));
     if ('data' in command && 'execute' in command) {
         client.commands.set(command.data.name, command);
-        console.log(`✅ Commande chargée : /${command.data.name}`);
     }
 }
 
-client.once('ready', () => {
-    console.log(`\n⛩️  Bot connecté en tant que ${client.user.tag}`);
-    console.log(`📋 ${client.commands.size} commande(s) chargée(s)\n`);
-    client.user.setActivity('Gakuran | Gang', { type: 3 });
-
-    // 🔄 Relancer les minuteurs des giveaways en cours après un redémarrage (Render)
-    giveawayModule.checkOngoingGiveaways(client);
-});
-
-// ─── VERROU ANTI-RACE CONDITION (Empêche les exécutions simultanées pendant les spam-reactions) ───
-const processingChecks = new Set();
-
-// ─── ACTIVITY CHECK — Suivi des réactions ───
-client.on('messageReactionAdd', async (reaction, user) => {
-    if (user.bot) return;
-
-    try {
-        // 1. Gestion sécurisée des partials
-        if (reaction.partial) {
-            try { await reaction.fetch(); } catch { return; }
-        }
-        if (reaction.message.partial) {
-            try { await reaction.message.fetch(); } catch { return; }
-        }
-
-        if (reaction.emoji.name !== '✅') return;
-
-        // Si ce message est déjà en cours d'analyse par une autre réaction instantanée, on passe
-        if (processingChecks.has(reaction.message.id)) return;
-
-        const checkFile = path.join(__dirname, 'data', 'activitycheck.json');
-        if (!fs.existsSync(checkFile)) return;
-
-        let checks;
-        try { 
-            checks = JSON.parse(fs.readFileSync(checkFile, 'utf8')); 
-        } catch (e) { 
-            return; 
-        }
-
-        const check = checks.find(c => c.messageId === reaction.message.id && !c.reached);
-        if (!check) return;
-
-        // Pose du verrou sur le message actif
-        processingChecks.add(reaction.message.id);
-
-        // 2. Fetch sécurisé des réacteurs (bloque les crashs de Rate-Limit / HTTP 429)
-        const users = await reaction.users.fetch().catch(() => null);
-        if (!users) {
-            processingChecks.delete(reaction.message.id);
-            return;
-        }
-
-        const humanCount = users.filter(u => !u.bot).size;
-
-        if (humanCount >= check.objectif) {
-            check.reached = true;
-
-            // 3. Sauvegarde sécurisée du fichier JSON
-            try {
-                fs.writeFileSync(checkFile, JSON.stringify(checks, null, 2));
-            } catch (err) {
-                console.error('[ACTIVITY CHECK] Erreur d\'écriture JSON :', err);
-            }
-
-            // 4. Envoi sécurisé de la confirmation dans le salon
-            try {
-                const channel = await client.channels.fetch(check.channelId).catch(() => null);
-                if (channel) {
-                    const successEmbed = new EmbedBuilder()
-                        .setTitle('🎉 OBJECTIF ATTEINT — GAKURAN')
-                        .setDescription(`**${humanCount} membre(s)** ont répondu présent !\n\n> La guilde est mobilisée. Bien joué à tous ! 🔥`)
-                        .setColor('#00FF88')
-                        .addFields(
-                            { name: '🎯 Objectif fixé',    value: `${check.objectif} réactions`, inline: true },
-                            { name: '✅ Réponses reçues',  value: `${humanCount} membres`,      inline: true },
-                        )
-                        .setFooter({ text: 'Gakuran Gang • Activity Check' })
-                        .setTimestamp();
-
-                    await channel.send({
-                        content: '🎊 **Objectif atteint !** @everyone',
-                        embeds: [successEmbed],
-                        allowedMentions: { parse: ['everyone'] }
-                    });
-                }
-            } catch (e) {
-                console.error('[ACTIVITY CHECK] Erreur d\'envoi du message :', e.message);
-            }
-        }
-
-        // Retrait du verrou une fois l'opération terminée
-        processingChecks.delete(reaction.message.id);
-
-    } catch (err) {
-        console.error('[ACTIVITY CHECK CRITICAL ERROR]', err);
-        if (reaction.message?.id) {
-            processingChecks.delete(reaction.message.id);
-        }
+// ─── CHARGEMENT AUTOMATIQUE DES ÉVÉNEMENTS (EVENT HANDLER) ───
+const eventsPath = path.join(__dirname, 'events');
+const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
+for (const file of eventFiles) {
+    const event = require(path.join(eventsPath, file));
+    if (event.once) {
+        client.once(event.name, (...args) => event.execute(...args, client));
+    } else {
+        client.on(event.name, (...args) => event.execute(...args, client));
     }
-});
-
-// ─── HANDLER COMMANDES & INTERACTIONS ───
-client.on('interactionCreate', async interaction => {
-
-    // 1️⃣ GESTION DES COMMANDES SLASH
-    if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-
-        try {
-            await command.execute(interaction);
-
-            // Logs
-            const logChannelId = process.env.LOGS_CHANNEL_ID?.trim();
-            if (logChannelId) {
-                try {
-                    const logChannel = await client.channels.fetch(logChannelId);
-                    if (logChannel) {
-                        let optsText = '';
-                        interaction.options.data.forEach(opt => {
-                            if (opt.options) {
-                                opt.options.forEach(sub => { optsText += `• **${sub.name}** : ${sub.value}\n`; });
-                            } else {
-                                optsText += `• **${opt.name}** : ${opt.value}\n`;
-                            }
-                        });
-
-                        const logEmbed = new EmbedBuilder()
-                            .setTitle('📥 Log de Commande — Gakuran')
-                            .setColor('#FFD700')
-                            .setDescription(`**${interaction.user.tag}** a exécuté une commande.`)
-                            .addFields(
-                                { name: '👤 Utilisateur', value: `<@${interaction.user.id}>`,   inline: true },
-                                { name: '💻 Commande',    value: `\`/${interaction.commandName}\``, inline: true },
-                                { name: '📍 Salon',       value: `<#${interaction.channelId}>`, inline: true },
-                                { name: '📋 Données',     value: optsText || '_Aucune option_', inline: false }
-                            )
-                            .setTimestamp();
-
-                        await logChannel.send({ embeds: [logEmbed] });
-                    }
-                } catch (e) {
-                    console.error('[LOGS]', e.message);
-                }
-            }
-
-        } catch (error) {
-            console.error(`❌ Erreur /${interaction.commandName} :`, error);
-            const msg = { content: '❌ Une erreur est survenue.', ephemeral: true };
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp(msg);
-            } else {
-                await interaction.reply(msg);
-            }
-        }
-        return;
-    }
-
-    // 2️⃣ GESTION DES CLICS SUR LES BOUTONS
-    if (interaction.isButton()) {
-
-        // --- A. BOUTON : FICHE IDENTITÉ ---
-        if (interaction.customId === 'ouvrir_fiche_modal') {
-            const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-
-            const modal = new ModalBuilder()
-                .setCustomId('soumettre_fiche_modal')
-                .setTitle('📝 Votre Fiche Gurenkai (IG)');
-
-            const nomInput = new TextInputBuilder()
-                .setCustomId('fiche_nom')
-                .setLabel('Nom & Prénom (En Jeu)')
-                .setPlaceholder('Ex: Kenji Sato')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
-
-            const styleInput = new TextInputBuilder()
-                .setCustomId('fiche_style')
-                .setLabel('Style de combat & autres infos')
-                .setPlaceholder('Décrivez votre style ou rôle (ex: Gakuran noir, pilote...)')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-
-            const telInput = new TextInputBuilder()
-                .setCustomId('fiche_tel')
-                .setLabel('Numéro de téléphone (En Jeu)')
-                .setPlaceholder('Ex: 555-0192')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
-
-            const photoInput = new TextInputBuilder()
-                .setCustomId('fiche_photo')
-                .setLabel('Photo de vous (Lien d\'image)')
-                .setPlaceholder('Collez un lien d\'image (Discord, Imgur...)')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(false);
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(nomInput),
-                new ActionRowBuilder().addComponents(styleInput),
-                new ActionRowBuilder().addComponents(telInput),
-                new ActionRowBuilder().addComponents(photoInput)
-            );
-
-            await interaction.showModal(modal);
-            return;
-        }
-
-        // --- B. BOUTON : PARTICIPER AU GIVEAWAY (MongoDB) ---
-        if (interaction.customId === 'giveaway_join') {
-            const gw = await Giveaway.findOne({ messageId: interaction.message.id });
-            if (!gw || gw.ended) {
-                return interaction.reply({ content: '❌ Ce giveaway est terminé !', ephemeral: true });
-            }
-
-            const userId = interaction.user.id;
-            const index = gw.participants.indexOf(userId);
-
-            if (index > -1) {
-                // Retirer la participation
-                gw.participants.splice(index, 1);
-                await gw.save();
-
-                const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                    .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` });
-
-                const updatedBtn = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('giveaway_join')
-                        .setLabel(`🎉 Participer (${gw.participants.length})`)
-                        .setStyle(ButtonStyle.Primary)
-                );
-
-                await interaction.message.edit({ embeds: [updatedEmbed], components: [updatedBtn] });
-                return interaction.reply({ content: '❌ Ta participation au giveaway a été retirée.', ephemeral: true });
-            } else {
-                // Ajouter la participation
-                gw.participants.push(userId);
-                await gw.save();
-
-                const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                    .setFooter({ text: `${gw.participants.length} Participant(s) • Gurenkai` });
-
-                const updatedBtn = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('giveaway_join')
-                        .setLabel(`🎉 Participer (${gw.participants.length})`)
-                        .setStyle(ButtonStyle.Primary)
-                );
-
-                await interaction.message.edit({ embeds: [updatedEmbed], components: [updatedBtn] });
-                return interaction.reply({ content: '🎉 Ta participation au giveaway a bien été enregistrée ! Good luck !', ephemeral: true });
-            }
-        }
-
-        return;
-    }
-
-    // 3️⃣ GESTION DE LA SOUMISSION DES FORMULAIRES (MODALS)
-    if (interaction.isModalSubmit()) {
-        
-        // --- FORMULAIRE : FICHE INFO ---
-        if (interaction.customId === 'soumettre_fiche_modal') {
-            const nom = interaction.fields.getTextInputValue('fiche_nom');
-            const style = interaction.fields.getTextInputValue('fiche_style');
-            const tel = interaction.fields.getTextInputValue('fiche_tel');
-            const photo = interaction.fields.getTextInputValue('fiche_photo') || '';
-
-            const destChannelId = process.env.FICHE_CHANNEL_ID || '1526596000314294453';
-            const destChannel = interaction.guild.channels.cache.get(destChannelId);
-
-            if (!destChannel) {
-                return interaction.reply({ 
-                    content: "❌ Impossible de trouver le salon de réception des fiches. Vérifiez le .env.", 
-                    ephemeral: true 
-                });
-            }
-
-            const embedFiche = new EmbedBuilder()
-                .setTitle(`👤 FICHE D'IDENTITÉ — ${nom.toUpperCase()}`)
-                .setColor('#FF2A7A')
-                .addFields(
-                    { name: '👤 Nom & Prénom IG', value: `\`${nom}\``, inline: true },
-                    { name: '📞 Téléphone', value: `\`${tel}\``, inline: true },
-                    { name: '🥋 Style / Spécialité', value: style, inline: false },
-                    { name: '🔗 Compte Discord', value: `${interaction.user} (${interaction.user.tag})`, inline: false }
-                )
-                .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
-                .setFooter({ text: `Gurenkai • Fiche enregistrée par ${interaction.user.username}` })
-                .setTimestamp();
-
-            if (photo.startsWith('http://') || photo.startsWith('https://')) {
-                embedFiche.setImage(photo);
-            }
-
-            try {
-                await destChannel.send({ embeds: [embedFiche] });
-                await interaction.reply({ 
-                    content: '✅ Votre fiche info a bien été enregistrée et transmise au répertoire de la Gurenkai !', 
-                    ephemeral: true 
-                });
-            } catch (err) {
-                console.error('[ERREUR FICHE MODAL]', err);
-                await interaction.reply({ 
-                    content: '❌ Une erreur technique est survenue lors de l\'enregistrement de votre fiche.', 
-                    ephemeral: true 
-                });
-            }
-        }
-
-        // --- FORMULAIRE : CRÉATION DE L'EMBED ---
-        if (interaction.customId === 'embed_builder_modal') {
-            const titre = interaction.fields.getTextInputValue('embed_titre');
-            const message = interaction.fields.getTextInputValue('embed_message');
-            let couleur = interaction.fields.getTextInputValue('embed_couleur').trim() || '#FF2A7A';
-            const image = interaction.fields.getTextInputValue('embed_image') || '';
-            const miniature = interaction.fields.getTextInputValue('embed_miniature') || '';
-
-            if (couleur && !couleur.startsWith('#')) {
-                couleur = '#' + couleur;
-            }
-            if (!/^#[0-9A-F]{6}$/i.test(couleur)) {
-                couleur = '#FF2A7A';
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor(couleur)
-                .setDescription(message)
-                .setFooter({ 
-                    text: `Annonce publiée par ${interaction.user.username}`, 
-                    iconURL: interaction.user.displayAvatarURL({ dynamic: true }) 
-                })
-                .setTimestamp();
-
-            if (titre) {
-                embed.setTitle(titre);
-            }
-
-            if (image && (image.startsWith('http://') || image.startsWith('https://'))) {
-                embed.setImage(image);
-            }
-            if (miniature && (miniature.startsWith('http://') || miniature.startsWith('https://'))) {
-                embed.setThumbnail(miniature);
-            }
-
-            try {
-                await interaction.channel.send({ embeds: [embed] });
-                await interaction.reply({ content: '✅ Embed publié avec succès !', ephemeral: true });
-            } catch (err) {
-                console.error('[ERREUR CREATION EMBED]', err);
-                await interaction.reply({ content: '❌ Impossible d\'envoyer l\'embed dans ce salon.', ephemeral: true });
-            }
-        }
-        
-        return;
-    }
-});
+    console.log(`⚙️ Événement chargé : ${event.name}`);
+}
 
 client.login(process.env.TOKEN);
