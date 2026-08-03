@@ -28,9 +28,15 @@ const client = new Client({
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Route pour UptimeRobot — répond toujours 200, sert juste à empêcher le sleep de Render
 app.get('/', (req, res) => {
+    res.status(200).send('✅ Bot Gurenkai V2 Online!');
+});
+
+// Route dédiée au vrai statut du bot — utilisée par le Health Check Path de Render
+app.get('/health', (req, res) => {
     if (client.isReady()) {
-        res.status(200).send('✅ Bot Gurenkai V2 Online!');
+        res.status(200).send('✅ Bot connecté à Discord');
     } else {
         // 503 = Render considère le service en échec et le redémarre automatiquement
         res.status(503).send('⚠️ Bot déconnecté de Discord (gateway down)');
