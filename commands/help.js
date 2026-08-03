@@ -22,6 +22,16 @@ module.exports = {
                 '> 💡 *Besoin d\'assistance supplémentaire ? Contacte un membre du Staff.*'
             )
             .addFields(
+                { 
+                    name: '👑 Propriétaire & Développement', 
+                    value: `> Bot développé et appartenant à <@${interaction.guild.ownerId}>.`, 
+                    inline: false 
+                },
+                { 
+                    name: '💡 Légende des Accès', 
+                    value: '> 👤 **[MEMBRE]** : Commande accessible à tous.\n> 🛡️ **[STAFF]** : Commande réservée à la Modération / Administration.', 
+                    inline: false 
+                },
                 { name: '🌐 Général & Utilaire',       value: '`/ping`, `/info`, `/embed`', inline: true },
                 { name: '📊 Activité & Événements', value: '`/activitycheck`, `/sondage`, `/evenement`', inline: true },
                 { name: '📜 Absences & Registre',   value: '`/absence`, `/liste-absences`, `/repertoire`', inline: true },
@@ -92,9 +102,9 @@ module.exports = {
                         .setTitle('⚙️ Catégorie — Général & Utile')
                         .setDescription('Voici les commandes d\'informations générales :')
                         .addFields(
-                            { name: '`/ping`', value: 'Affiche la latence du bot et de l\'API Discord.' },
-                            { name: '`/info [@membre]`', value: 'Affiche le profil Discord complet d\'un membre.' },
-                            { name: '`/embed`', value: 'Ouvre un formulaire pour créer un message stylisé (réservé Staff).' }
+                            { name: '👤 `/ping`', value: 'Affiche la latence du bot et de l\'API Discord.' },
+                            { name: '👤 `/info [@membre]`', value: 'Affiche le profil Discord complet d\'un membre.' },
+                            { name: '🛡️ `/embed`', value: 'Ouvre un formulaire pour créer un message stylisé (réservé Staff).' }
                         );
                     break;
 
@@ -103,11 +113,11 @@ module.exports = {
                         .setTitle('📊 Catégorie — Activité & Événements')
                         .setDescription('Outils de mobilisation et d\'organisation :')
                         .addFields(
-                            { name: '`/activitycheck [objectif] [raison]`', value: 'Lance un appel à la mobilisation avec objectif de réactions.' },
-                            { name: '`/sondage [question]`', value: 'Crée un vote rapide pour la guilde.' },
-                            { name: '`/liste-sondage`', value: 'Affiche la liste des sondages en cours.' },
-                            { name: '`/evenement`', value: 'Planifie un rassemblement ou une sortie de gang.' },
-                            { name: '`/liste-event`', value: 'Consulte les événements à venir.' }
+                            { name: '🛡️ `/activitycheck [objectif] [raison]`', value: 'Lance un activity check avec un objectif de réactions à atteindre.' },
+                            { name: '🛡️ `/sondage [question]`', value: 'Crée un sondage.' },
+                            { name: '👤 `/liste-sondage`', value: 'Affiche la liste des sondages en cours.' },
+                            { name: '🛡️ `/evenement`', value: 'Planifie un événements pour le gang.' },
+                            { name: '👤 `/liste-event`', value: 'Consulte les événements à venir.' }
                         );
                     break;
 
@@ -116,11 +126,11 @@ module.exports = {
                         .setTitle('📜 Catégorie — Absences & Registre')
                         .setDescription('Gestion des présences au sein du gang :')
                         .addFields(
-                            { name: '`/absence [debut] [fin] [raison]`', value: 'Déclare une période d\'absence officielle.' },
-                            { name: '`/liste-absences`', value: 'Affiche les membres actuellement absents.' },
-                            { name: '`/supprimer-absence`', value: 'Annule ta déclaration d\'absence.' },
-                            { name: '`/setup-fiche`', value: 'Envoie le bouton pour remplir la fiche IG (réservé Staff).' },
-                            { name: '`/repertoire`', value: 'Affiche le lien vers le répertoire des fiches.' }
+                            { name: '👤 `/absence [debut] [fin] [raison]`', value: 'Déclare une période d\'absence.' },
+                            { name: '👤 `/liste-absences`', value: 'Affiche les membres actuellement absents. (réservé Staff)' },
+                            { name: '👤 `/supprimer-absence`', value: 'Annule ta déclaration d\'absence.' },
+                            { name: '🛡️ `/setup-fiche`', value: 'Setup le système des fiche info (réservé Staff).' },
+                            { name: '👤 `/repertoire`', value: 'Affiche le répertoire des fiches info.' }
                         );
                     break;
 
@@ -129,10 +139,10 @@ module.exports = {
                         .setTitle('🏆 Catégorie — Gang & Divertissement')
                         .setDescription('Module d\'animation et de rivalités :')
                         .addFields(
-                            { name: '`/giveaway`', value: 'Lance un concours pour faire gagner un lot.' },
-                            { name: '`/leaderboard`', value: 'Affiche le classement des membres les plus actifs.' },
-                            { name: '`/kos`', value: 'Affiche ou gère la liste Kill On Sight (Cibles prioritaires).' },
-                            { name: '`/relations`', value: 'Consulte l\'état des alliances et rivalités du gang.' }
+                            { name: '🛡️ `/giveaway`', value: 'Lance un giveaway.' },
+                            { name: '👤 `/leaderboard`', value: 'Affiche le classement des membres les plus forts du gang.' },
+                            { name: '👤 `/kos`', value: 'Affiche ou gère la liste des KOS.' },
+                            { name: '👤 `/relations`', value: 'Consulte l\'état des relations du gang.' }
                         );
                     break;
             }
