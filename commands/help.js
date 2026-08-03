@@ -24,7 +24,7 @@ module.exports = {
             .addFields(
                 { 
                     name: '👑 Propriétaire & Développement', 
-                    value: `> Bot développé et appartenant à <@${interaction.guild.ownerId}>.`, 
+                    value: `> Bot développé et appartenant à Tacos (A.m79).`, 
                     inline: false 
                 },
                 { 
