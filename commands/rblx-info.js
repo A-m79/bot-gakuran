@@ -6,8 +6,10 @@ const {
     ButtonStyle 
 } = require('discord.js');
 
-// ─── CLÉ API OPEN CLOUD (à mettre dans les variables d'env de Render) ───
+// ─── CONFIGURATION ───
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
+const SUSPICION_LOG_CHANNEL_ID = '1533767617234600098'; // Ton salon de logs
+const AUTHORIZED_ROLE_NAME = 'bot info'; // Nom du rôle autorisé pour l'analyse
 
 // ─── CACHE MÉMOIRE AVEC AUTO-PURGE ───
 const cache = new Map();
@@ -105,9 +107,7 @@ function generateProgressBar(percent) {
     return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
 }
 
-// ─── BADGES VIA OPEN CLOUD (remplace l'ancien badges.roblox.com bloqué en 401) ───
-
-// Récupère les badges d'un utilisateur avec leur date d'obtention précise (addTime)
+// ─── BADGES VIA OPEN CLOUD ───
 async function getUserBadgesWithDates(userId) {
     const url = `https://apis.roblox.com/cloud/v2/users/${userId}/inventory-items?filter=badges=true&maxPageSize=100`;
 
@@ -121,7 +121,6 @@ async function getUserBadgesWithDates(userId) {
     }));
 }
 
-// Récupère le nom lisible d'un badge (endpoint public, pas besoin de clé API)
 async function getBadgeName(badgeId) {
     try {
         const data = await fetchWithRetry(`https://badges.roblox.com/v1/badges/${badgeId}`);
@@ -131,7 +130,6 @@ async function getBadgeName(badgeId) {
     }
 }
 
-// Compare les badges de 2 comptes avec timing précis (Open Cloud)
 async function compareBadges(targetId, mainId) {
     try {
         const [targetBadges, mainBadges] = await Promise.all([
@@ -151,7 +149,6 @@ async function compareBadges(targetId, mainId) {
             }
         }
 
-        // Récupère les noms en parallèle, uniquement pour les badges communs trouvés
         const commonBadges = await Promise.all(
             commonBadgesRaw.map(async b => ({
                 ...b,
@@ -163,6 +160,23 @@ async function compareBadges(targetId, mainId) {
     } catch (e) {
         console.error('[ERREUR COMPARAISON BADGES]', e);
         return [];
+    }
+}
+
+// Fonction d'envoi du log si score >= 50%
+async function sendSuspicionLog(guild, targetName, targetId, finalScore, executor, type, embedToSend) {
+    if (finalScore < 50 || !guild) return;
+
+    try {
+        const logChannel = await guild.channels.fetch(SUSPICION_LOG_CHANNEL_ID).catch(() => null);
+        if (logChannel) {
+            await logChannel.send({
+                content: `🚨 **ALERTE SUSPICION D'ALT (${finalScore}%)** — Modérateur : ${executor} | Cible : **@${targetName}** (\`${targetId}\`)`,
+                embeds: [embedToSend]
+            });
+        }
+    } catch (err) {
+        console.error('[ERREUR ENVOI LOG SUSPICION]', err);
     }
 }
 
@@ -200,11 +214,8 @@ module.exports = {
             }
 
             const targetUser = searchData.data[0];
-
-            // Requéte principale (Profil basique)
             const userRes = await fetchWithRetry(`https://users.roblox.com/v1/users/${targetUser.id}`);
 
-            // Requêtes secondaires exécutées en parallèle avec Promise.allSettled
             const settledResults = await Promise.allSettled([
                 fetchWithRetry(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${targetUser.id}&size=420x420&format=Png&isCircular=false`),
                 fetchWithRetry(`https://friends.roblox.com/v1/users/${targetUser.id}/friends/count`),
@@ -215,7 +226,7 @@ module.exports = {
                     body: JSON.stringify({ userIds: [targetUser.id] })
                 }),
                 fetchWithRetry(`https://groups.roblox.com/v1/users/${targetUser.id}/groups/roles`),
-                getUserBadgesWithDates(targetUser.id) // ← Open Cloud maintenant
+                getUserBadgesWithDates(targetUser.id)
             ]);
 
             const avatarRes = getSettledValue(settledResults[0]);
@@ -223,12 +234,11 @@ module.exports = {
             const followersRes = getSettledValue(settledResults[2]);
             const presenceRes = getSettledValue(settledResults[3]);
             const groupsRes = getSettledValue(settledResults[4]);
-            const badgesList = getSettledValue(settledResults[5]); // tableau direct, pas de .data
+            const badgesList = getSettledValue(settledResults[5]);
 
             const friendsCount = friendsRes?.count ?? 0;
             const followersCount = followersRes?.count ?? 0;
             const groupsCount = groupsRes?.data ? groupsRes.data.length : 0;
-
             const badgesCount = badgesList ? (badgesList.length >= 100 ? '100+' : badgesList.length) : '🔒 Non accessible';
 
             const displayName = userRes.displayName || userRes.name;
@@ -290,6 +300,18 @@ module.exports = {
     },
 
     async handleButton(interaction) {
+        // ─── 1. VÉRIFICATION DU RÔLE AUTORISÉ ───
+        const isAuthorized = interaction.member?.roles?.cache?.some(r => 
+            r.name.toLowerCase() === AUTHORIZED_ROLE_NAME.toLowerCase()
+        ) || interaction.member?.permissions?.has('Administrator');
+
+        if (!isAuthorized) {
+            return interaction.reply({
+                content: `🔒 **Accès restreint** : Seuls les membres ayant le rôle **${AUTHORIZED_ROLE_NAME}** peuvent effectuer des analyses de risque.`,
+                ephemeral: true
+            });
+        }
+
         await interaction.deferReply();
 
         // ─── MODE 1 : ANALYSE CROISÉE (Alt vs Main) ───
@@ -372,7 +394,7 @@ module.exports = {
                     breakdown.push(`> 🟢 **Aucun groupe commun** ➔ **+0%**`);
                 }
 
-                // 4. Badges en Commun (via Open Cloud, avec timing précis)
+                // 4. Badges en Commun
                 const commonBadges = await compareBadges(targetId, mainData.id);
                 if (commonBadges.length > 0) {
                     const closeInTime = commonBadges.filter(b => b.diffMinutes < 60);
@@ -390,7 +412,6 @@ module.exports = {
 
                 const finalScore = Math.min(matchScore, 99);
                 const progressBar = generateProgressBar(finalScore);
-
                 let color = finalScore >= 60 ? '#ED4245' : (finalScore >= 35 ? '#F1C40F' : '#57F287');
 
                 const compareEmbed = new EmbedBuilder()
@@ -406,6 +427,17 @@ module.exports = {
                     )
                     .setFooter({ text: 'Gurenkai Security • Analyse Croisée', iconURL: interaction.guild.iconURL() })
                     .setTimestamp();
+
+                // 🚨 Alerte Log Automatique si >= 50%
+                await sendSuspicionLog(
+                    interaction.guild, 
+                    targetUser.name, 
+                    targetId, 
+                    finalScore, 
+                    interaction.user, 
+                    `Comparaison vs @${mainUser.name}`, 
+                    compareEmbed
+                );
 
                 return interaction.editReply({ embeds: [compareEmbed] });
 
@@ -426,13 +458,13 @@ module.exports = {
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/friends/count`),
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/followers/count`),
                     fetchWithRetry(`https://groups.roblox.com/v1/users/${userId}/groups/roles`),
-                    getUserBadgesWithDates(userId) // ← Open Cloud maintenant
+                    getUserBadgesWithDates(userId)
                 ]);
 
                 const friendsRes = getSettledValue(settledAudit[0]);
                 const followersRes = getSettledValue(settledAudit[1]);
                 const groupsRes = getSettledValue(settledAudit[2]);
-                const badgesList = getSettledValue(settledAudit[3]); // tableau direct
+                const badgesList = getSettledValue(settledAudit[3]);
 
                 const friendsCount = friendsRes?.count ?? 0;
                 const followersCount = followersRes?.count ?? 0;
@@ -515,6 +547,17 @@ module.exports = {
                     )
                     .setFooter({ text: 'Gurenkai Security • Audit Public', iconURL: interaction.guild.iconURL() })
                     .setTimestamp();
+
+                // 🚨 Alerte Log Automatique si >= 50%
+                await sendSuspicionLog(
+                    interaction.guild, 
+                    userData.name, 
+                    userId, 
+                    finalScore, 
+                    interaction.user, 
+                    'Audit Solo', 
+                    auditEmbed
+                );
 
                 return interaction.editReply({ embeds: [auditEmbed] });
 
