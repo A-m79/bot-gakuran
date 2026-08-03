@@ -60,31 +60,94 @@ module.exports = {
         // ─── 2. BOUTONS ───
         if (interaction.isButton()) {
 
-            // 🔓 DÉBANNIR UN ADMIN / BOT NEUTRALISÉ PAR L'ANTI-NUKE
-            if (interaction.customId.startsWith('antinuke_unban_')) {
-                // Sécurité : Seul le FONDATEUR (Owner) ou un Administrateur peut cliquer
-                if (interaction.user.id !== interaction.guild.ownerId && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                    return interaction.reply({ content: "❌ Seul le Fondateur du serveur ou un Administrateur peut utiliser ce bouton !", ephemeral: true });
+            // 🔓 DÉBANNIR UN MODÉRATEUR / BOT / MEMBRE (unban_ & antinuke_unban_)
+            if (interaction.customId.startsWith('antinuke_unban_') || interaction.customId.startsWith('unban_')) {
+                if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ content: "❌ Vous n'avez pas la permission de débannir !", ephemeral: true });
                 }
 
-                const userIdToUnban = interaction.customId.replace('antinuke_unban_', '');
+                // Réponse différée instantanée (< 3s)
+                await interaction.deferReply({ ephemeral: true }).catch(() => null);
+
+                const userIdToUnban = interaction.customId.includes('antinuke_unban_') 
+                    ? interaction.customId.replace('antinuke_unban_', '')
+                    : interaction.customId.replace('unban_', '');
 
                 try {
-                    await interaction.guild.members.unban(userIdToUnban, "Annulation du bannissement Anti-Nuke par un Admin/Owner");
+                    await interaction.guild.members.unban(userIdToUnban, `Débannissement via bouton par ${interaction.user.tag}`);
 
-                    // Désactiver le bouton après utilisation
-                    const disabledRow = new ActionRowBuilder().addComponents(
-                        ButtonBuilder.from(interaction.message.components[0].components[0])
-                            .setDisabled(true)
-                            .setLabel('✅ Utilisateur Débanni')
-                            .setStyle(ButtonStyle.Secondary)
-                    );
+                    // Désactiver le bouton si présent sur le message d'origine
+                    if (interaction.message?.components?.length > 0) {
+                        const disabledRow = new ActionRowBuilder().addComponents(
+                            ButtonBuilder.from(interaction.message.components[0].components[0])
+                                .setDisabled(true)
+                                .setLabel('✅ Utilisateur Débanni')
+                                .setStyle(ButtonStyle.Secondary)
+                        );
+                        await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+                    }
 
-                    await interaction.update({ components: [disabledRow] });
-                    await interaction.followUp({ content: `✅ L'utilisateur/bot (<@${userIdToUnban}>) a été débanni avec succès !`, ephemeral: true });
+                    await interaction.editReply({ content: `✅ L'utilisateur/bot (<@${userIdToUnban}>) a été débanni avec succès !` });
                 } catch (err) {
-                    console.error("Erreur unban Anti-Nuke :", err);
-                    await interaction.reply({ content: "❌ Impossible de débannir cet utilisateur (ID introuvable ou déjà débanni).", ephemeral: true });
+                    console.error("Erreur unban :", err);
+                    await interaction.editReply({ content: "❌ Impossible de débannir cet utilisateur (ID introuvable ou déjà débanni)." });
+                }
+                return;
+            }
+
+            // 🔄 RÉTABLIR / RÉINVITER UN MEMBRE EXPULSÉ (reinvite_)
+            if (interaction.customId.startsWith('reinvite_')) {
+                if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ content: "❌ Vous n'avez pas les permissions requises pour exécuter cette action.", ephemeral: true });
+                }
+
+                // Réponse différée instantanée (< 3s) pour éviter le timeout Discord
+                await interaction.deferReply({ ephemeral: true }).catch(() => null);
+
+                const targetId = interaction.customId.replace('reinvite_', '');
+
+                try {
+                    // 1. Déban préventif (au cas où la personne était aussi bannie)
+                    await interaction.guild.members.unban(targetId, 'Débannissement automatique pour réinvitation').catch(() => null);
+
+                    // 2. Fetch du membre
+                    const targetUser = await client.users.fetch(targetId).catch(() => null);
+                    if (!targetUser) {
+                        return await interaction.editReply({ content: '❌ Impossible de trouver cet utilisateur Discord.' });
+                    }
+
+                    // 3. Génération d'un lien d'invitation unique (1 utilisation / 24h)
+                    const invite = await interaction.channel.createInvite({
+                        maxAge: 86400,
+                        maxUses: 1,
+                        unique: true,
+                        reason: `Invitation d'excuse envoyée par ${interaction.user.tag}`
+                    }).catch(() => null);
+
+                    if (!invite) {
+                        return await interaction.editReply({ content: '❌ Impossible de créer une invitation dans ce salon (vérifiez les permissions du bot).' });
+                    }
+
+                    // 4. Message d'excuse
+                    const apologyEmbed = new EmbedBuilder()
+                        .setTitle(`📩 Invitation sur ${interaction.guild.name}`)
+                        .setColor('#5865F2')
+                        .setDescription(`Bonjour ! 👋\n\nL'action de modération (kick/ban) prise à ton encontre sur le serveur **${interaction.guild.name}** a été révisée et annulée par notre équipe de sécurité.\n\nIl s'agissait d'un incident qui est désormais entièrement résolu. Nous te prions d'accepter nos excuses pour la gêne occasionnée !\n\nVoici ton lien unique pour réintégrer le serveur :`)
+                        .addFields({ name: '🔗 Lien d\'accès unique (24h)', value: invite.url })
+                        .setFooter({ text: interaction.guild.name, iconURL: interaction.guild.iconURL() })
+                        .setTimestamp();
+
+                    // 5. Envoi par message privé
+                    const sent = await targetUser.send({ embeds: [apologyEmbed] }).catch(() => null);
+
+                    if (sent) {
+                        await interaction.editReply({ content: `✅ Un message privé d'excuse avec l'invitation unique a été envoyé à **${targetUser.tag}** !` });
+                    } else {
+                        await interaction.editReply({ content: `⚠️ L'utilisateur a été dé-sanctionné, mais ses messages privés sont fermés. Voici son lien d'invitation : ${invite.url}` });
+                    }
+                } catch (err) {
+                    console.error('Erreur réinvitation :', err);
+                    await interaction.editReply({ content: '❌ Une erreur est survenue lors du traitement du rétablissement.' });
                 }
                 return;
             }
