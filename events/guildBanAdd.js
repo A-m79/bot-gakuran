@@ -2,7 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AuditLogEven
 
 // Mémoire pour suivre le nombre de bans par utilisateur
 const banTracker = new Map();
-const BAN_LIMIT = 3;        // Max 3 bans
+const BAN_LIMIT = 1;        // Max 3 bans
 const TIME_FRAME = 10000;   // En 10 secondes (10 000 ms)
 
 module.exports = {
