@@ -60,6 +60,35 @@ module.exports = {
         // ─── 2. BOUTONS ───
         if (interaction.isButton()) {
 
+            // 🔓 DÉBANNIR UN ADMIN / BOT NEUTRALISÉ PAR L'ANTI-NUKE
+            if (interaction.customId.startsWith('antinuke_unban_')) {
+                // Sécurité : Seul le FONDATEUR (Owner) ou un Administrateur peut cliquer
+                if (interaction.user.id !== interaction.guild.ownerId && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ content: "❌ Seul le Fondateur du serveur ou un Administrateur peut utiliser ce bouton !", ephemeral: true });
+                }
+
+                const userIdToUnban = interaction.customId.replace('antinuke_unban_', '');
+
+                try {
+                    await interaction.guild.members.unban(userIdToUnban, "Annulation du bannissement Anti-Nuke par un Admin/Owner");
+
+                    // Désactiver le bouton après utilisation
+                    const disabledRow = new ActionRowBuilder().addComponents(
+                        ButtonBuilder.from(interaction.message.components[0].components[0])
+                            .setDisabled(true)
+                            .setLabel('✅ Utilisateur Débanni')
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+
+                    await interaction.update({ components: [disabledRow] });
+                    await interaction.followUp({ content: `✅ L'utilisateur/bot (<@${userIdToUnban}>) a été débanni avec succès !`, ephemeral: true });
+                } catch (err) {
+                    console.error("Erreur unban Anti-Nuke :", err);
+                    await interaction.reply({ content: "❌ Impossible de débannir cet utilisateur (ID introuvable ou déjà débanni).", ephemeral: true });
+                }
+                return;
+            }
+
             // 🛡️ DÉTECTEUR D'ALT ROBLOX (/rblx-info)
             if (interaction.customId.startsWith('rblx_alt_') || interaction.customId.startsWith('rblx_compare_')) {
                 const command = client.commands.get('rblx-info');
