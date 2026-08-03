@@ -6,6 +6,9 @@ const {
     ButtonStyle 
 } = require('discord.js');
 
+// ─── CLÉ API OPEN CLOUD (à mettre dans les variables d'env de Render) ───
+const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
+
 // ─── CACHE MÉMOIRE AVEC AUTO-PURGE ───
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -102,32 +105,65 @@ function generateProgressBar(percent) {
     return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
 }
 
-async function compareBadges(targetId, mainId) {
-    const [targetBadgesResult, mainBadgesResult] = await Promise.allSettled([
-        fetchWithRetry(`https://badges.roblox.com/v1/users/${targetId}/badges?limit=100&sortOrder=Desc`),
-        fetchWithRetry(`https://badges.roblox.com/v1/users/${mainId}/badges?limit=100&sortOrder=Desc`)
-    ]);
+// ─── BADGES VIA OPEN CLOUD (remplace l'ancien badges.roblox.com bloqué en 401) ───
 
-    const targetBadgesRes = getSettledValue(targetBadgesResult);
-    const mainBadgesRes = getSettledValue(mainBadgesResult);
+// Récupère les badges d'un utilisateur avec leur date d'obtention précise (addTime)
+async function getUserBadgesWithDates(userId) {
+    const url = `https://apis.roblox.com/cloud/v2/users/${userId}/inventory-items?filter=badges=true&maxPageSize=100`;
 
-    const targetBadges = targetBadgesRes?.data || [];
-    const mainBadges = mainBadgesRes?.data || [];
+    const data = await fetchWithRetry(url, {
+        headers: { 'x-api-key': ROBLOX_API_KEY }
+    });
 
-    if (targetBadges.length === 0 || mainBadges.length === 0) return [];
+    return (data.inventoryItems || []).map(item => ({
+        badgeId: String(item.badgeDetails.badgeId),
+        addTime: item.addTime
+    }));
+}
 
-    const mainBadgeMap = new Map(mainBadges.map(b => [b.id, b.awardedDate]));
-    const commonBadges = [];
-
-    for (const badge of targetBadges) {
-        if (mainBadgeMap.has(badge.id)) {
-            const t1 = new Date(badge.awardedDate).getTime();
-            const t2 = new Date(mainBadgeMap.get(badge.id)).getTime();
-            const diffMinutes = Math.abs(t1 - t2) / (1000 * 60);
-            commonBadges.push({ name: badge.name, diffMinutes });
-        }
+// Récupère le nom lisible d'un badge (endpoint public, pas besoin de clé API)
+async function getBadgeName(badgeId) {
+    try {
+        const data = await fetchWithRetry(`https://badges.roblox.com/v1/badges/${badgeId}`);
+        return data.displayName || data.name || `Badge #${badgeId}`;
+    } catch (e) {
+        return `Badge #${badgeId}`;
     }
-    return commonBadges;
+}
+
+// Compare les badges de 2 comptes avec timing précis (Open Cloud)
+async function compareBadges(targetId, mainId) {
+    try {
+        const [targetBadges, mainBadges] = await Promise.all([
+            getUserBadgesWithDates(targetId),
+            getUserBadgesWithDates(mainId)
+        ]);
+
+        const mainBadgeMap = new Map(mainBadges.map(b => [b.badgeId, b.addTime]));
+        const commonBadgesRaw = [];
+
+        for (const badge of targetBadges) {
+            if (mainBadgeMap.has(badge.badgeId)) {
+                const t1 = new Date(badge.addTime).getTime();
+                const t2 = new Date(mainBadgeMap.get(badge.badgeId)).getTime();
+                const diffMinutes = Math.abs(t1 - t2) / (1000 * 60);
+                commonBadgesRaw.push({ badgeId: badge.badgeId, diffMinutes });
+            }
+        }
+
+        // Récupère les noms en parallèle, uniquement pour les badges communs trouvés
+        const commonBadges = await Promise.all(
+            commonBadgesRaw.map(async b => ({
+                ...b,
+                name: await getBadgeName(b.badgeId)
+            }))
+        );
+
+        return commonBadges;
+    } catch (e) {
+        console.error('[ERREUR COMPARAISON BADGES]', e);
+        return [];
+    }
 }
 
 // ─── COMMANDE DISCORD ───
@@ -179,7 +215,7 @@ module.exports = {
                     body: JSON.stringify({ userIds: [targetUser.id] })
                 }),
                 fetchWithRetry(`https://groups.roblox.com/v1/users/${targetUser.id}/groups/roles`),
-                fetchWithRetry(`https://badges.roblox.com/v1/users/${targetUser.id}/badges?limit=100&sortOrder=Desc`)
+                getUserBadgesWithDates(targetUser.id) // ← Open Cloud maintenant
             ]);
 
             const avatarRes = getSettledValue(settledResults[0]);
@@ -187,14 +223,13 @@ module.exports = {
             const followersRes = getSettledValue(settledResults[2]);
             const presenceRes = getSettledValue(settledResults[3]);
             const groupsRes = getSettledValue(settledResults[4]);
-            const badgesRes = getSettledValue(settledResults[5]);
+            const badgesList = getSettledValue(settledResults[5]); // tableau direct, pas de .data
 
             const friendsCount = friendsRes?.count ?? 0;
             const followersCount = followersRes?.count ?? 0;
             const groupsCount = groupsRes?.data ? groupsRes.data.length : 0;
-            
-            // Si la requête badges a échoué (ex: 401 ou inventaire privé), on affiche "Privé / Indisponible"
-            const badgesCount = badgesRes?.data ? (badgesRes.data.length >= 100 ? '100+' : badgesRes.data.length) : '🔒 Privé / Non accessible';
+
+            const badgesCount = badgesList ? (badgesList.length >= 100 ? '100+' : badgesList.length) : '🔒 Non accessible';
 
             const displayName = userRes.displayName || userRes.name;
             const description = (userRes.description && userRes.description.trim() !== '') ? userRes.description : 'Aucune description.';
@@ -337,7 +372,7 @@ module.exports = {
                     breakdown.push(`> 🟢 **Aucun groupe commun** ➔ **+0%**`);
                 }
 
-                // 4. Badges en Commun
+                // 4. Badges en Commun (via Open Cloud, avec timing précis)
                 const commonBadges = await compareBadges(targetId, mainData.id);
                 if (commonBadges.length > 0) {
                     const closeInTime = commonBadges.filter(b => b.diffMinutes < 60);
@@ -350,7 +385,7 @@ module.exports = {
                         breakdown.push(`> 🟡 **Badges de jeux en commun :** \`${commonBadges.length}\` badge(s) partagé(s) ➔ **+20%**`);
                     }
                 } else {
-                    breakdown.push(`> 🟢 **Aucun badge commun (ou non accessible)** ➔ **+0%**`);
+                    breakdown.push(`> 🟢 **Aucun badge commun** ➔ **+0%**`);
                 }
 
                 const finalScore = Math.min(matchScore, 99);
@@ -391,18 +426,18 @@ module.exports = {
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/friends/count`),
                     fetchWithRetry(`https://friends.roblox.com/v1/users/${userId}/followers/count`),
                     fetchWithRetry(`https://groups.roblox.com/v1/users/${userId}/groups/roles`),
-                    fetchWithRetry(`https://badges.roblox.com/v1/users/${userId}/badges?limit=100&sortOrder=Desc`)
+                    getUserBadgesWithDates(userId) // ← Open Cloud maintenant
                 ]);
 
                 const friendsRes = getSettledValue(settledAudit[0]);
                 const followersRes = getSettledValue(settledAudit[1]);
                 const groupsRes = getSettledValue(settledAudit[2]);
-                const badgesRes = getSettledValue(settledAudit[3]);
+                const badgesList = getSettledValue(settledAudit[3]); // tableau direct
 
                 const friendsCount = friendsRes?.count ?? 0;
                 const followersCount = followersRes?.count ?? 0;
                 const groupsCount = groupsRes?.data ? groupsRes.data.length : 0;
-                const badgesCount = badgesRes?.data ? badgesRes.data.length : null;
+                const badgesCount = badgesList ? badgesList.length : null;
 
                 let riskScore = 0;
                 const breakdown = [];
@@ -423,7 +458,7 @@ module.exports = {
 
                 // 2. ACTIVITÉ DE JEU (BADGES)
                 if (badgesCount === null) {
-                    breakdown.push(`> 🔒 **Badges Jeux :** Non accessible / Privé ➔ **+0%**`);
+                    breakdown.push(`> 🔒 **Badges Jeux :** Non accessible ➔ **+0%**`);
                 } else if (badgesCount === 0) {
                     riskScore += 30;
                     breakdown.push(`> 🔴 **Badges Jeux :** Aucun badge débloqué (\`0\`) ➔ **+30%**`);
