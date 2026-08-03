@@ -10,12 +10,6 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ Connected to MongoDB Atlas!'))
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
-// ─── SERVEUR HTTP ───
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('✅ Bot Gurenkai V2 Online!'));
-app.listen(PORT, () => console.log(`🌐 HTTP Server running on port ${PORT}`));
-
 // ─── CLIENT DISCORD ───
 const client = new Client({
     intents: [
@@ -29,6 +23,21 @@ const client = new Client({
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
+
+// ─── SERVEUR HTTP (Health Check honnête, basé sur l'état réel du bot) ───
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    if (client.isReady()) {
+        res.status(200).send('✅ Bot Gurenkai V2 Online!');
+    } else {
+        // 503 = Render considère le service en échec et le redémarre automatiquement
+        res.status(503).send('⚠️ Bot déconnecté de Discord (gateway down)');
+    }
+});
+
+app.listen(PORT, () => console.log(`🌐 HTTP Server running on port ${PORT}`));
 
 client.commands = new Collection();
 
@@ -65,6 +74,23 @@ for (const file of eventFiles) {
     }
     console.log(`⚙️ Événement chargé : ${event.name}`);
 }
+
+// ─── MONITORING DE LA CONNEXION GATEWAY (diagnostic déconnexions) ───
+client.on('shardDisconnect', (event, shardId) => {
+    console.warn(`⚠️ Shard ${shardId} déconnecté — Code: ${event.code}, Raison: ${event.reason}`);
+});
+
+client.on('shardReconnecting', (shardId) => {
+    console.log(`🔄 Shard ${shardId} tente de se reconnecter...`);
+});
+
+client.on('shardResume', (shardId, replayedEvents) => {
+    console.log(`✅ Shard ${shardId} reconnecté avec succès (${replayedEvents} events rejoués)`);
+});
+
+client.on('shardError', (error, shardId) => {
+    console.error(`❌ Erreur sur le shard ${shardId} :`, error);
+});
 
 // ─── FILETS DE SÉCURITÉ GLOBAUX ───
 // Empêche le process de crash sur des erreurs vraiment imprévues
