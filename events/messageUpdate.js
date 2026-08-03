@@ -3,35 +3,46 @@ const { EmbedBuilder } = require('discord.js');
 module.exports = {
     name: 'messageUpdate',
     async execute(oldMessage, newMessage) {
-        // 1. Vérification de la guilde
-        if (!newMessage || !newMessage.guild) return;
+        try {
+            // Si le message est partiel, on tente de le récupérer en entier
+            if (newMessage.partial) {
+                newMessage = await newMessage.fetch().catch(() => null);
+            }
+            if (oldMessage?.partial) {
+                oldMessage = await oldMessage.fetch().catch(() => null);
+            }
 
-        // 2. On récupère l'auteur via newMessage (toujours plus fiable) ou oldMessage
-        const author = newMessage.author || oldMessage.author;
-        
-        // 3. Si aucun auteur trouvé ou si c'est un bot, on s'arrête net (anti-crash)
-        if (!author || author.bot) return;
+            // Si l'un des deux n'a pas pu être résolu, on abandonne proprement
+            if (!newMessage || !oldMessage) return;
+            if (!newMessage.guild) return;
+            if (!newMessage.channel) return;
 
-        // 4. Ignore si le contenu n'a pas changé (ex: lien qui génère une image/embed)
-        if (oldMessage.content === newMessage.content) return;
+            const author = newMessage.author || oldMessage.author;
+            if (!author || author.bot) return;
 
-        const logChannelId = process.env.SECURITY_LOGS_CHANNEL_ID?.trim();
-        if (!logChannelId) return;
+            if (oldMessage.content === newMessage.content) return;
 
-        const logChannel = await newMessage.guild.channels.fetch(logChannelId).catch(() => null);
-        if (!logChannel) return;
+            const logChannelId = process.env.SECURITY_LOGS_CHANNEL_ID?.trim();
+            if (!logChannelId) return;
 
-        const embed = new EmbedBuilder()
-            .setTitle('✏️ Message Modifié')
-            .setColor('#FFAA00')
-            .addFields(
-                { name: '👤 Auteur', value: `${author} (\`${author.id}\`)`, inline: true },
-                { name: '📍 Salon', value: `${newMessage.channel}`, inline: true },
-                { name: '💬 Avant', value: `\`\`\`${oldMessage.content?.slice(0, 1000) || 'Ancien message non mis en cache'}\`\`\`` },
-                { name: '💬 Après', value: `\`\`\`${newMessage.content?.slice(0, 1000) || 'Inconnu'}\`\`\`` }
-            )
-            .setTimestamp();
+            const logChannel = await newMessage.guild.channels.fetch(logChannelId).catch(() => null);
+            if (!logChannel) return;
 
-        await logChannel.send({ embeds: [embed] }).catch(() => null);
+            const embed = new EmbedBuilder()
+                .setTitle('✏️ Message Modifié')
+                .setColor('#FFAA00')
+                .addFields(
+                    { name: '👤 Auteur', value: `${author} (\`${author.id}\`)`, inline: true },
+                    { name: '📍 Salon', value: `${newMessage.channel}`, inline: true },
+                    { name: '💬 Avant', value: `\`\`\`${oldMessage.content?.slice(0, 1000) || 'Ancien message non mis en cache'}\`\`\`` },
+                    { name: '💬 Après', value: `\`\`\`${newMessage.content?.slice(0, 1000) || 'Inconnu'}\`\`\`` }
+                )
+                .setTimestamp();
+
+            await logChannel.send({ embeds: [embed] }).catch(() => null);
+
+        } catch (err) {
+            console.error('❌ Erreur dans messageUpdate :', err);
+        }
     }
 };

@@ -43,16 +43,41 @@ for (const file of commandFiles) {
 }
 
 // ─── CHARGEMENT AUTOMATIQUE DES ÉVÉNEMENTS (EVENT HANDLER) ───
+// Chaque event est isolé dans un try/catch : si UN event throw une erreur,
+// ça n'affecte plus que lui, le bot entier ne crash plus.
 const eventsPath = path.join(__dirname, 'events');
 const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
 for (const file of eventFiles) {
     const event = require(path.join(eventsPath, file));
+
+    const safeExecute = async (...args) => {
+        try {
+            await event.execute(...args, client);
+        } catch (err) {
+            console.error(`❌ Erreur non gérée dans l'event "${event.name}" (fichier: ${file}) :`, err);
+        }
+    };
+
     if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args, client));
+        client.once(event.name, safeExecute);
     } else {
-        client.on(event.name, (...args) => event.execute(...args, client));
+        client.on(event.name, safeExecute);
     }
     console.log(`⚙️ Événement chargé : ${event.name}`);
 }
+
+// ─── FILETS DE SÉCURITÉ GLOBAUX ───
+// Empêche le process de crash sur des erreurs vraiment imprévues
+client.on('error', (err) => {
+    console.error('❌ Erreur client Discord :', err);
+});
+
+process.on('unhandledRejection', (err) => {
+    console.error('❌ Promesse rejetée non gérée :', err);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ Exception non capturée :', err);
+});
 
 client.login(process.env.TOKEN);
