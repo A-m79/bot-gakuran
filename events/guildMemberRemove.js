@@ -1,7 +1,7 @@
 const { EmbedBuilder, AuditLogEvent, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 const recentKicksMap = new Map();
-const KICK_THRESHOLD = 1;
+const KICK_THRESHOLD = 3;
 const KICK_TIME_WINDOW = 10000;
 
 module.exports = {

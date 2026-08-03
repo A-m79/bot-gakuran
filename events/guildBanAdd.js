@@ -2,7 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AuditLogEven
 
 // Stockage : executorId -> [{ timestamp, targetId, targetTag }]
 const banTracker = new Map();
-const BAN_LIMIT = 1;        // Seuil : 3 bans (remets à 1 si tu veux tester tout seul)
+const BAN_LIMIT = 3;        // Seuil : 3 bans (remets à 1 si tu veux tester tout seul)
 const TIME_FRAME = 10000;   // Fenêtre de 10 secondes (10 000 ms)
 
 module.exports = {
