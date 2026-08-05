@@ -44,6 +44,7 @@ const giveawayModule = {
             .setName('reroll')
             .setDescription('Tirer au sort de nouveaux gagnants pour un giveaway terminé')
             .addStringOption(opt => opt.setName('message_id').setDescription('L\'ID du message du giveaway').setRequired(true))
+            .addUserOption(opt => opt.setName('gagnant').setDescription('Gagnant spécifique à remplacer (laisser vide pour tout reroll)').setRequired(false))
         )
         .addSubcommand(sub => sub
             .setName('liste')
@@ -100,10 +101,10 @@ const giveawayModule = {
             const logo = fs.existsSync(logoPath) ? new AttachmentBuilder(logoPath, { name: 'logo.png' }) : null;
 
             const embed = new EmbedBuilder()
-                .setTitle('🎉 GURENKAI • GIVEAWAY EXCLUSIF')
+                .setTitle('🎉 GURENKAI • GIVEAWAY')
                 .setColor('#FF2A7A')
                 .setDescription(
-                    `Un nouveau concours vient d'ouvrir ses portes ! Tente ta chance en cliquant sur le bouton ci-dessous. 👇\n\n` +
+                    `Un nouveau giveaway est en cours ! Tente ta chance en cliquant sur le bouton ci-dessous. 👇\n\n` +
                     `### 🎁 Lot en jeu\n` +
                     `> **\` ${prize} \`**\n\n` +
                     `✨ **Informations :**\n` +
@@ -159,23 +160,84 @@ const giveawayModule = {
 
         if (sub === 'reroll') {
             const messageId = interaction.options.getString('message_id');
+            const targetUser = interaction.options.getUser('gagnant');
+
             const gw = await Giveaway.findOne({ messageId });
-            if (!gw) return interaction.editReply({ content: '❌ Giveaway introuvable.' });
-            if (!gw.participants || gw.participants.length < 2) return interaction.editReply({ content: '❌ Il faut au moins 2 participants pour effectuer un reroll.' });
-
-            const channel = await interaction.client.channels.fetch(gw.channelId);
-            const winners = [];
-            const pool = [...gw.participants];
-
-            for (let i = 0; i < Math.min(gw.winnersCount, pool.length); i++) {
-                const randIndex = Math.floor(Math.random() * pool.length);
-                winners.push(pool.splice(randIndex, 1)[0]);
+            if (!gw) return interaction.editReply({ content: '❌ Giveaway introuvable dans la base de données.' });
+            if (!gw.ended) return interaction.editReply({ content: '⚠️ Ce giveaway n\'est pas encore terminé.' });
+            if (!gw.participants || gw.participants.length < 2) {
+                return interaction.editReply({ content: '❌ Il faut au moins 2 participants pour effectuer un reroll.' });
             }
 
-            const winnersMention = winners.map(id => `<@${id}>`).join(', ');
-            await channel.send({ content: `🔄 **Nouveau tirage au sort (Reroll) pour "${gw.prize}" !**\nFélicitations au nouveau gagnant : ${winnersMention} ! 🎉` });
+            const channel = await interaction.client.channels.fetch(gw.channelId).catch(() => null);
+            if (!channel) return interaction.editReply({ content: '❌ Salon introuvable.' });
 
-            return interaction.editReply({ content: '✅ Relance (Reroll) effectuée avec succès !' });
+            const message = await channel.messages.fetch(messageId).catch(() => null);
+            if (!message) return interaction.editReply({ content: '❌ Message du giveaway introuvable.' });
+
+            const oldEmbed = message.embeds[0];
+            if (!oldEmbed) return interaction.editReply({ content: '❌ Embed de giveaway introuvable.' });
+
+            // Extraction des ID des gagnants actuels depuis l'embed
+            const winnerMatches = [...(oldEmbed.description || '').matchAll(/<@!?(\d+)>/g)];
+            let currentWinnerIds = winnerMatches.map(m => m[1]);
+
+            if (targetUser) {
+                // --- REROLL CIBLÉ (Un seul gagnant remplacé) ---
+                if (!currentWinnerIds.includes(targetUser.id)) {
+                    return interaction.editReply({ content: `❌ <@${targetUser.id}> ne figure pas parmi les gagnants actuels de ce giveaway.` });
+                }
+
+                // Exclure tous les gagnants actuels des candidats possibles
+                const pool = gw.participants.filter(id => !currentWinnerIds.includes(id));
+
+                if (pool.length === 0) {
+                    return interaction.editReply({ content: '⚠️ Aucun autre participant disponible pour remplacer ce gagnant.' });
+                }
+
+                const newWinnerId = pool[Math.floor(Math.random() * pool.length)];
+                currentWinnerIds = currentWinnerIds.map(id => id === targetUser.id ? newWinnerId : id);
+
+                const newWinnersMention = currentWinnerIds.map(id => `<@${id}>`).join(', ');
+                const updatedDescription = oldEmbed.description.replace(
+                    /> 🏆 \*\*Gagnant\(s\) :\*\* .*/,
+                    `> 🏆 **Gagnant(s) :** ${newWinnersMention}`
+                );
+
+                const updatedEmbed = EmbedBuilder.from(oldEmbed).setDescription(updatedDescription);
+                const logoPath = path.join(__dirname, '..', 'logo.png');
+                const files = fs.existsSync(logoPath) ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
+
+                await message.edit({ embeds: [updatedEmbed], files });
+                await channel.send({ content: `🔄 **Reroll ciblé !** <@${targetUser.id}> a été remplacé par <@${newWinnerId}> pour le lot **${gw.prize}** ! 🎉` });
+
+                return interaction.editReply({ content: `✅ Gagnant <@${targetUser.id}> remplacé avec succès par <@${newWinnerId}> !` });
+
+            } else {
+                // --- REROLL GLOBAL (Tous les gagnants relancés) ---
+                const pool = [...gw.participants];
+                const newWinners = [];
+
+                for (let i = 0; i < Math.min(gw.winnersCount, pool.length); i++) {
+                    const randIndex = Math.floor(Math.random() * pool.length);
+                    newWinners.push(pool.splice(randIndex, 1)[0]);
+                }
+
+                const newWinnersMention = newWinners.map(id => `<@${id}>`).join(', ');
+                const updatedDescription = oldEmbed.description.replace(
+                    /> 🏆 \*\*Gagnant\(s\) :\*\* .*/,
+                    `> 🏆 **Gagnant(s) :** ${newWinnersMention}`
+                );
+
+                const updatedEmbed = EmbedBuilder.from(oldEmbed).setDescription(updatedDescription);
+                const logoPath = path.join(__dirname, '..', 'logo.png');
+                const files = fs.existsSync(logoPath) ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
+
+                await message.edit({ embeds: [updatedEmbed], files });
+                await channel.send({ content: `🔄 **Nouveau tirage complet (Reroll) pour "${gw.prize}" !**\nFélicitations aux nouveaux gagnants : ${newWinnersMention} ! 🎉` });
+
+                return interaction.editReply({ content: '✅ Relance (Reroll) globale effectuée avec succès !' });
+            }
         }
     },
 
