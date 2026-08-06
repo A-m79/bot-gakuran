@@ -45,8 +45,8 @@ module.exports = {
                 .setFooter({ text: 'Gurenkai • Activity Check' })
                 .setTimestamp();
 
-            const checkChannel = await interaction.client.channels.fetch(process.env.ACTIVITY_CHECK_CHANNEL_ID);
-            const sentMsg = await checkChannel.send({
+            // 🎯 Envoi dans le salon courant où la commande est exécutée
+            const sentMsg = await interaction.channel.send({
                 content: '@everyone',
                 embeds: [embed],
                 files: [logo],
@@ -63,7 +63,7 @@ module.exports = {
                 reached: false
             });
 
-            await interaction.editReply({ content: `✅ Activity check lancé dans <#${process.env.ACTIVITY_CHECK_CHANNEL_ID}> — Objectif : **${objectif}** réactions.` });
+            await interaction.editReply({ content: `✅ Activity check lancé dans <#${interaction.channelId}> — Objectif : **${objectif}** réactions.` });
         }
 
         if (sub === 'terminer') {
