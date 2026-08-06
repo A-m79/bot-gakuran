@@ -15,7 +15,6 @@ module.exports = {
             if (reaction.emoji.name !== '✅') return;
             if (processingChecks.has(reaction.message.id)) return;
 
-            // Recherche du check d'activité sur MongoDB
             const check = await ActivityCheck.findOne({ messageId: reaction.message.id, reached: false });
             if (!check) return;
 
@@ -33,7 +32,7 @@ module.exports = {
                 check.reached = true;
                 await check.save();
 
-                const channel = await client.channels.fetch(check.channelId).catch(() => null);
+                const channel = await reaction.client.channels.fetch(check.channelId).catch(() => null);
                 if (channel) {
                     const successEmbed = new EmbedBuilder()
                         .setTitle('🎉 OBJECTIF ATTEINT — GURENKAI')
