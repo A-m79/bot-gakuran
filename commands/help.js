@@ -12,6 +12,14 @@ module.exports = {
         .setDescription('⛩️ Affiche le menu d\'aide interactif du Bot Gurenkai'),
 
     async execute(interaction) {
+        const member = interaction.member;
+
+        // 🔒 VÉRIFICATION DU RÔLE STAFF / BOT-AUTO
+        const authorizedRoleId = process.env.AUTHORIZED_ROLE_ID || process.env.AUTHORIZED_ROLE;
+        const isStaff = (authorizedRoleId && member.roles.cache.has(authorizedRoleId)) || 
+                        member.roles.cache.some(r => r.name.toLowerCase() === 'bot-auto') || 
+                        member.permissions.has('Administrator');
+
         // --- EMBED PRINCIPAL (Accueil) ---
         const mainEmbed = new EmbedBuilder()
             .setTitle('⛩️ MENU — GURENKAI V2')
@@ -40,36 +48,49 @@ module.exports = {
             .setFooter({ text: 'Gurenkai Gang • Menu Interactif V2', iconURL: interaction.guild.iconURL({ dynamic: true }) })
             .setTimestamp();
 
-        // --- MENU DÉROULANT ---
+        // --- OPTIONS DU MENU DÉROULANT ---
+        const options = [
+            {
+                label: 'Général & Utilaire',
+                description: 'Informations, latence et création d\'embeds',
+                value: 'cat_general',
+                emoji: '⚙️'
+            },
+            {
+                label: 'Activité & Événements',
+                description: 'Checks d\'activité, sondages et évènements de guilde',
+                value: 'cat_activity',
+                emoji: '📊'
+            },
+            {
+                label: 'Absences & Registre',
+                description: 'Déclarer ou consulter les absences et fiches membres',
+                value: 'cat_absence',
+                emoji: '📜'
+            },
+            {
+                label: 'Gang & Divertissement',
+                description: 'Giveaways, classements, liste KOS et relations',
+                value: 'cat_gang',
+                emoji: '🏆'
+            }
+        ];
+
+        // 🔒 Si l'utilisateur possède le rôle bot-auto / Staff, on ajoute la catégorie Staff
+        if (isStaff) {
+            options.push({
+                label: 'Staff & Direction',
+                description: 'Gestion des commandes, permissions et administration',
+                value: 'cat_staff',
+                emoji: '👑'
+            });
+        }
+
+        // --- CREATION DU MENU DÉROULANT ---
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('help_category_select')
             .setPlaceholder('📂 Choisis une catégorie à afficher...')
-            .addOptions([
-                {
-                    label: 'Général & Utilaire',
-                    description: 'Informations, latence et création d\'embeds',
-                    value: 'cat_general',
-                    emoji: '⚙️'
-                },
-                {
-                    label: 'Activité & Événements',
-                    description: 'Checks d\'activité, sondages et évènements de guilde',
-                    value: 'cat_activity',
-                    emoji: '📊'
-                },
-                {
-                    label: 'Absences & Registre',
-                    description: 'Déclarer ou consulter les absences et fiches membres',
-                    value: 'cat_absence',
-                    emoji: '📜'
-                },
-                {
-                    label: 'Gang & Divertissement',
-                    description: 'Giveaways, classements, liste KOS et relations',
-                    value: 'cat_gang',
-                    emoji: '🏆'
-                }
-            ]);
+            .addOptions(options);
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
@@ -143,6 +164,18 @@ module.exports = {
                             { name: '👤 `/leaderboard`', value: 'Affiche le classement des membres les plus forts du gang.' },
                             { name: '👤 `/kos`', value: 'Affiche ou gère la liste des KOS.' },
                             { name: '👤 `/relations`', value: 'Consulte l\'état des relations du gang.' }
+                        );
+                    break;
+
+                case 'cat_staff':
+                    updatedEmbed
+                        .setTitle('👑 Catégorie — Staff & Direction')
+                        .setDescription('Commandes d\'administration et de gestion du bot :')
+                        .addFields(
+                            { name: '🛡️ `/togglecmd [commande] [etat]`', value: 'Activer, désactiver ou lister les commandes du bot.' },
+                            { name: '🛡️ `/setchanperm`', value: 'Gérer les permissions d\'un salon textuel ou vocal.' },
+                            { name: '🛡️ `/setcatperm`', value: 'Gérer les permissions d\'une catégorie complète.' },
+                            { name: '🛡️ `/rblx-info`', value: 'Inspecter un profil Roblox et détecter les alts/médias.' }
                         );
                     break;
             }
