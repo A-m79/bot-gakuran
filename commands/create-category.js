@@ -1,5 +1,4 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
-const { hasAuthorizedRole } = require('../utils/permissions');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,7 +14,10 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    if (!hasAuthorizedRole(interaction)) {
+    const authorizedIds = process.env.AUTHORIZED_ROLE_IDS.split(',');
+    const isAuthorized = interaction.member.roles.cache.some(role => authorizedIds.includes(role.id));
+
+    if (!isAuthorized) {
       return interaction.reply({ content: '❌ Cette commande est réservée au staff autorisé.', ephemeral: true });
     }
 
