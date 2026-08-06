@@ -1,17 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-const disabledPath = path.join(__dirname, '..', 'disabled-commands.json');
-
-function loadDisabled() {
-  if (!fs.existsSync(disabledPath)) fs.writeFileSync(disabledPath, '[]');
-  return JSON.parse(fs.readFileSync(disabledPath, 'utf8'));
-}
-
-function saveDisabled(list) {
-  fs.writeFileSync(disabledPath, JSON.stringify(list, null, 2));
-}
+const DisabledCommand = require('../models/DisabledCommand');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -38,17 +26,20 @@ module.exports = {
 
     const cmdName = interaction.options.getString('commande')?.toLowerCase().trim();
     const etat = interaction.options.getString('etat');
-    let disabled = loadDisabled();
 
-    // 📋 Afficher la liste si l'option 'list' est choisie OU si aucun paramètre n'est fourni
+    // 📋 Afficher la liste si 'list' ou si aucune option n'est entrée
     if (etat === 'list' || (!cmdName && !etat)) {
+      const disabledDocs = await DisabledCommand.find({});
+      const disabledList = disabledDocs.map(d => d.commandName);
+
       return interaction.reply({
-        content: disabled.length ? `🔒 **Commandes désactivées :**\n${disabled.map(c => `• /${c}`).join('\n')}` : '✅ **Aucune commande désactivée.**',
+        content: disabledList.length 
+          ? `🔒 **Commandes désactivées :**\n${disabledList.map(c => `• /${c}`).join('\n')}` 
+          : '✅ **Aucune commande désactivée.**',
         ephemeral: true,
       });
     }
 
-    // Si pas de commande spécifiée mais action Activer/Désactiver sélectionnée
     if (!cmdName) {
       return interaction.reply({ content: '❌ Tu dois préciser le nom d\'une commande à modifier.', ephemeral: true });
     }
@@ -61,15 +52,18 @@ module.exports = {
       return interaction.reply({ content: `❌ Tu ne peux pas désactiver /togglecmd toi-même.`, ephemeral: true });
     }
 
-    const shouldDisable = etat === 'disable' || (!etat && !disabled.includes(cmdName));
+    const existing = await DisabledCommand.findOne({ commandName: cmdName });
+    const shouldDisable = etat === 'disable' || (!etat && !existing);
 
     if (shouldDisable) {
-      if (!disabled.includes(cmdName)) disabled.push(cmdName);
-      saveDisabled(disabled);
+      if (!existing) {
+        await DisabledCommand.create({ commandName: cmdName });
+      }
       return interaction.reply({ content: `🔒 /${cmdName} est maintenant **désactivée**.`, ephemeral: true });
     } else {
-      disabled = disabled.filter(c => c !== cmdName);
-      saveDisabled(disabled);
+      if (existing) {
+        await DisabledCommand.deleteOne({ commandName: cmdName });
+      }
       return interaction.reply({ content: `🔓 /${cmdName} est maintenant **activée**.`, ephemeral: true });
     }
   },

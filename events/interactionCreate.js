@@ -1,7 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
 const Giveaway = require('../models/Giveaway');
+const DisabledCommand = require('../models/DisabledCommand');
 
 module.exports = {
     name: 'interactionCreate',
@@ -15,20 +14,17 @@ module.exports = {
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
 
-            // 🔒 VÉRIFICATION DES COMMANDES DÉSACTIVÉES
-            const disabledPath = path.join(__dirname, '..', 'disabled-commands.json');
-            if (fs.existsSync(disabledPath)) {
-                try {
-                    const disabled = JSON.parse(fs.readFileSync(disabledPath, 'utf8'));
-                    if (disabled.includes(interaction.commandName)) {
-                        return interaction.reply({ 
-                            content: `❌ La commande **/${interaction.commandName}** est actuellement désactivée par la direction.`, 
-                            ephemeral: true 
-                        });
-                    }
-                } catch (err) {
-                    console.error('Erreur lecture disabled-commands.json:', err);
+            // 🔒 VÉRIFICATION DES COMMANDES DÉSACTIVÉES (Via MongoDB)
+            try {
+                const isDisabled = await DisabledCommand.exists({ commandName: interaction.commandName });
+                if (isDisabled) {
+                    return interaction.reply({ 
+                        content: `❌ La commande **/${interaction.commandName}** est actuellement désactivée par la direction.`, 
+                        ephemeral: true 
+                    });
                 }
+            } catch (err) {
+                console.error('Erreur vérification MongoDB commandes désactivées:', err);
             }
 
             try {
