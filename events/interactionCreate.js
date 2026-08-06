@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
-const path = path = require('path');
+const path = require('path');
 const Giveaway = require('../models/Giveaway');
 
 module.exports = {
