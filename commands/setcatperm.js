@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 
 const PERM_MAP = {
   voir: PermissionFlagsBits.ViewChannel,
@@ -58,14 +58,24 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    const authorizedIds = process.env.AUTHORIZED_ROLE_IDS.split(',');
-    const isAuthorized = interaction.member.roles.cache.some(role => authorizedIds.includes(role.id));
-
-    if (!isAuthorized) {
-      return interaction.reply({ content: '❌ Cette commande est réservée au staff autorisé.', ephemeral: true });
+    // 1. Prévient immédiatement Discord pour éviter le délai dépassé (3s)
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } catch {
+      // Ignorer si la réponse a déjà été différée
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    // 2. Vérification sécurisée des rôles autorisés
+    const rawAuthIds = process.env.AUTHORIZED_ROLE_IDS || '';
+    const authorizedIds = rawAuthIds.split(',').filter(Boolean);
+    
+    // Si l'utilisateur est Admin Discord OU a un rôle autorisé dans le .env
+    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    const isAuthorized = isAdmin || interaction.member.roles.cache.some(role => authorizedIds.includes(role.id));
+
+    if (!isAuthorized) {
+      return interaction.editReply({ content: '❌ Cette commande est réservée au staff autorisé.' });
+    }
 
     const category = interaction.options.getChannel('categorie');
     const permKey = interaction.options.getString('permission');
@@ -98,12 +108,24 @@ module.exports = {
       let syncMsg = '';
       if (syncDirect) {
         const children = interaction.guild.channels.cache.filter(c => c.parentId === category.id);
+        let syncedCount = 0;
+        let failCount = 0;
+
         for (const ch of children.values()) {
-          await ch.lockPermissions();
+          try {
+            await ch.lockPermissions();
+            syncedCount++;
+          } catch {
+            failCount++;
+          }
         }
-        syncMsg = `\n🔄 ${children.size} salon(s) enfant(s) synchronisé(s).`;
+
+        syncMsg = `\n🔄 ${syncedCount} salon(s) synchronisé(s).`;
+        if (failCount > 0) {
+          syncMsg += ` (⚠️ ${failCount} salon(s) n'ont pas pu être synchronisés).`;
+        }
       } else {
-        syncMsg = `\n⚠️ Pense à synchroniser les salons enfants (ou relance avec \`sync_direct: Oui\`).`;
+        syncMsg = `\n⚠️ Pense à synchroniser les salons enfants si besoin.`;
       }
 
       await interaction.editReply(
