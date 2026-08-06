@@ -23,11 +23,12 @@ module.exports = {
         .setRequired(false))
     .addStringOption(o =>
       o.setName('etat')
-        .setDescription('Activer ou désactiver')
+        .setDescription('Activer, désactiver ou voir la liste')
         .setRequired(false)
         .addChoices(
           { name: 'Désactiver', value: 'disable' },
           { name: 'Activer', value: 'enable' },
+          { name: 'Voir la liste désactivée', value: 'list' },
         )),
 
   async execute(interaction) {
@@ -39,24 +40,27 @@ module.exports = {
     const etat = interaction.options.getString('etat');
     let disabled = loadDisabled();
 
-    // 📋 Si aucun nom de commande n'est fourni, on affiche la liste
-    if (!cmdName) {
+    // 📋 Afficher la liste si l'option 'list' est choisie OU si aucun paramètre n'est fourni
+    if (etat === 'list' || (!cmdName && !etat)) {
       return interaction.reply({
         content: disabled.length ? `🔒 **Commandes désactivées :**\n${disabled.map(c => `• /${c}`).join('\n')}` : '✅ **Aucune commande désactivée.**',
         ephemeral: true,
       });
     }
 
-    // Vérification de l'existence de la commande
+    // Si pas de commande spécifiée mais action Activer/Désactiver sélectionnée
+    if (!cmdName) {
+      return interaction.reply({ content: '❌ Tu dois préciser le nom d\'une commande à modifier.', ephemeral: true });
+    }
+
     if (!interaction.client.commands.has(cmdName)) {
       return interaction.reply({ content: `❌ La commande /${cmdName} n'existe pas.`, ephemeral: true });
     }
 
     if (cmdName === 'togglecmd') {
-      return interaction.reply({ content: `❌ Tu ne peux pas désactiver /togglecmd toi-même, tu serais coincé.`, ephemeral: true });
+      return interaction.reply({ content: `❌ Tu ne peux pas désactiver /togglecmd toi-même.`, ephemeral: true });
     }
 
-    // Détermination de l'action (désactiver, activer, ou bascule automatique)
     const shouldDisable = etat === 'disable' || (!etat && !disabled.includes(cmdName));
 
     if (shouldDisable) {
