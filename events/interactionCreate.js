@@ -1,4 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
+const fs = require('fs');
+const path = path = require('path');
 const Giveaway = require('../models/Giveaway');
 
 module.exports = {
@@ -12,6 +14,22 @@ module.exports = {
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
+
+            // 🔒 VÉRIFICATION DES COMMANDES DÉSACTIVÉES
+            const disabledPath = path.join(__dirname, '..', 'disabled-commands.json');
+            if (fs.existsSync(disabledPath)) {
+                try {
+                    const disabled = JSON.parse(fs.readFileSync(disabledPath, 'utf8'));
+                    if (disabled.includes(interaction.commandName)) {
+                        return interaction.reply({ 
+                            content: `❌ La commande **/${interaction.commandName}** est actuellement désactivée par la direction.`, 
+                            ephemeral: true 
+                        });
+                    }
+                } catch (err) {
+                    console.error('Erreur lecture disabled-commands.json:', err);
+                }
+            }
 
             try {
                 await command.execute(interaction);
@@ -75,7 +93,6 @@ module.exports = {
                 try {
                     await interaction.guild.members.unban(userIdToUnban, `Débannissement via bouton par ${interaction.user.tag}`);
 
-                    // Désactiver uniquement le bouton Débannir cliqué
                     if (interaction.message?.components?.length > 0) {
                         const updatedRows = interaction.message.components.map(row => {
                             const newRow = new ActionRowBuilder();
@@ -110,7 +127,6 @@ module.exports = {
                 const targetId = interaction.customId.replace('reinvite_', '');
 
                 try {
-                    // Déban préventif au cas où la personne était bannie
                     await interaction.guild.members.unban(targetId, 'Débannissement automatique pour réinvitation').catch(() => null);
 
                     const targetUser = await client.users.fetch(targetId).catch(() => null);
@@ -118,10 +134,9 @@ module.exports = {
                         return await interaction.editReply({ content: '❌ Impossible de trouver cet utilisateur Discord.' });
                     }
 
-                    // Génération du lien d'invitation d'urgence
                     const invite = await interaction.channel.createInvite({
-                        maxAge: 86400, // 24h
-                        maxUses: 1,     // 1 seule utilisation
+                        maxAge: 86400,
+                        maxUses: 1,
                         unique: true,
                         reason: `Lien de réintégration généré par ${interaction.user.tag}`
                     }).catch(() => null);
@@ -130,7 +145,6 @@ module.exports = {
                         return await interaction.editReply({ content: '❌ Impossible de créer une invitation dans ce salon (vérifiez les permissions du bot).' });
                     }
 
-                    // Désactiver uniquement le bouton cliqué
                     if (interaction.message?.components?.length > 0) {
                         const updatedRows = interaction.message.components.map(row => {
                             const newRow = new ActionRowBuilder();
@@ -146,10 +160,8 @@ module.exports = {
                         await interaction.message.edit({ components: updatedRows }).catch(() => null);
                     }
 
-                    // Tentative discrète de MP au cas où
                     await targetUser.send(`Bonjour ! Voici un lien unique pour réintégrer le serveur **${interaction.guild.name}** : ${invite.url}`).catch(() => null);
 
-                    // Réponse directe et claire au Staff
                     await interaction.editReply({ 
                         content: `🔗 **Lien d'invitation généré pour <@${targetUser.id}> !**\n\nVoici le lien unique (valable 24h / 1 utilisation) à lui transmettre :\n👉 **${invite.url}**` 
                     });
@@ -184,7 +196,7 @@ module.exports = {
                     const ticketChannel = await guild.channels.create({
                         name: `ticket-${member.user.username}`,
                         type: ChannelType.GuildText,
-                        parent: '1525302551627563098', // ID de la catégorie ticket
+                        parent: '1525302551627563098',
                         permissionOverwrites: [
                             {
                                 id: guild.roles.everyone.id,
