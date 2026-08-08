@@ -3,7 +3,6 @@ const { EmbedBuilder, AuditLogEvent } = require('discord.js');
 module.exports = {
     name: 'messageDelete',
     async execute(message) {
-        // Ignorer les MPs et les bots connus
         if (!message.guild || message.author?.bot) return;
 
         const logChannelId = process.env.SECURITY_LOGS_CHANNEL_ID?.trim();
@@ -12,54 +11,61 @@ module.exports = {
         const logChannel = await message.guild.channels.fetch(logChannelId).catch(() => null);
         if (!logChannel) return;
 
-        // 1️⃣ Gestion propre de l'auteur (évite l'affichage null / undefined)
-        const authorText = message.author 
-            ? `${message.author} (\`${message.author.id}\`)` 
-            : '❓ *Auteur inconnu (Non en cache)*';
+        // 1️⃣ Formatage propre de l'auteur
+        const authorText = message.author
+            ? `${message.author} (\`${message.author.id}\`)`
+            : '❓ *Auteur inconnu*';
 
-        // 2️⃣ Identification de la personne qui a supprimé le message
         let deletedBy = '👤 L\'auteur *(ou suppression auto)*';
 
-        // Attente de 1 seconde pour s'assurer que Discord a inscrit l'action dans l'Audit Log
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Pause pour laisser le temps à l'API Discord d'inscrire/mettre à jour l'Audit Log
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
+        // 2️⃣ Recherche dans les 5 derniers Audit Logs
         const fetchedLogs = await message.guild.fetchAuditLogs({
-            limit: 1,
+            limit: 5,
             type: AuditLogEvent.MessageDelete
-        }).catch(() => null);
+        }).catch(err => {
+            console.error('❌ [AUDIT LOG] Échec de fetchAuditLogs (probable permission "Voir le journal d\'audit" manquante) :', err.message);
+            return null;
+        });
 
         if (fetchedLogs) {
-            const deletionLog = fetchedLogs.entries.first();
-            if (deletionLog) {
-                const { executor, target, extra, createdAt } = deletionLog;
-                
-                const isRecent = (Date.now() - createdAt.getTime()) < 5000; // Moins de 5 secondes
-                const matchesChannel = extra?.channel?.id === message.channel.id;
-                const matchesTarget = !message.author || target?.id === message.author.id;
+            // Recherche de l'entrée correspondant au salon et à l'auteur
+            const deletionLog = fetchedLogs.entries.find(entry => {
+                const matchesChannel = entry.extra?.channel?.id === message.channel.id;
+                const matchesTarget = !message.author || entry.target?.id === message.author.id;
+                // Fenêtre de 20s car la date du log ne change pas quand le modérateur enchaîne les suppressions
+                const isRecent = (Date.now() - entry.createdTimestamp) < 20000;
+                return matchesChannel && matchesTarget && isRecent;
+            });
 
-                if (isRecent && matchesChannel && matchesTarget && executor) {
-                    deletedBy = `${executor} (\`${executor.id}\`)`;
-                }
+            if (deletionLog?.executor) {
+                deletedBy = `${deletionLog.executor} (\`${deletionLog.executor.id}\`)`;
+            } else {
+                console.warn(`⚠️ [AUDIT LOG] ${fetchedLogs.entries.size} entrée(s) récupérée(s), mais aucune ne correspond pour le message de ${message.author?.tag || 'auteur inconnu'} dans #${message.channel?.name}.`);
             }
+        } else {
+            console.warn('⚠️ [AUDIT LOG] fetchedLogs est null — vérifie la permission "Voir le journal d\'audit" du bot.');
         }
 
-        // 3️⃣ Formatage du contenu et détection des pièces jointes
-        let contentText = message.content 
-            ? `\`\`\`${message.content.slice(0, 1000)}\`\`\`` 
+        // 3️⃣ Contenu du message
+        let contentText = message.content
+            ? `\`\`\`${message.content.slice(0, 1000)}\`\`\``
             : '_Aucun texte (Image, Embed ou non-caché)_';
 
         if (message.attachments?.size > 0) {
             contentText += `\n📎 *[${message.attachments.size} fichier(s) joint(s)]*`;
         }
 
-        // 4️⃣ Construction de l'Embed de log
+        // 4️⃣ Embed final
         const embed = new EmbedBuilder()
             .setTitle('🗑️ Message Supprimé')
             .setColor('#FF5555')
             .addFields(
                 { name: '👤 Auteur', value: authorText, inline: true },
                 { name: '🛡️ Supprimé par', value: deletedBy, inline: true },
-                { name: '📍 Salon', value: `${message.channel}`, inline: true },
+                { name: '📍 Salon', value: `${message.channel}`, inline: false },
                 { name: '💬 Contenu', value: contentText }
             )
             .setTimestamp();
