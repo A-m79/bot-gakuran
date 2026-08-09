@@ -20,8 +20,22 @@ module.exports = {
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('couleur')
-                .setDescription('Couleur hex (ex: #FF2A7A). Par défaut rose Gurenkai')
-                .setRequired(false))
+                .setDescription('Couleur de l\'embed. Par défaut rose Gurenkai')
+                .setRequired(false)
+                .addChoices(
+                    { name: '🩷 Rose Gurenkai', value: '#FF2A7A' },
+                    { name: '🔴 Rouge', value: '#ED4245' },
+                    { name: '🟠 Orange', value: '#E67E22' },
+                    { name: '🟡 Jaune', value: '#F1C40F' },
+                    { name: '🟢 Vert', value: '#57F287' },
+                    { name: '🔵 Bleu', value: '#3498DB' },
+                    { name: '🟣 Violet', value: '#9B59B6' },
+                    { name: '⚫ Noir', value: '#23272A' },
+                    { name: '⚪ Blanc', value: '#FFFFFF' },
+                    { name: '🩵 Cyan', value: '#00D9FF' },
+                    { name: '💛 Or', value: '#FFD700' },
+                    { name: '🟤 Marron', value: '#8B4513' },
+                ))
         .addStringOption(option =>
             option.setName('image')
                 .setDescription('URL d\'une image à afficher en bas de l\'embed')
