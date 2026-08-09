@@ -23,7 +23,7 @@ module.exports = {
                 .setDescription('Couleur de l\'embed. Par défaut rose Gurenkai')
                 .setRequired(false)
                 .addChoices(
-                    { name: '🩷 Rose Gurenkai', value: '#FF2A7A' },
+                    { name: '🩷 Rose ', value: '#FF2A7A' },
                     { name: '🔴 Rouge', value: '#ED4245' },
                     { name: '🟠 Orange', value: '#E67E22' },
                     { name: '🟡 Jaune', value: '#F1C40F' },
