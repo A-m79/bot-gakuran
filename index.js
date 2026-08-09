@@ -1,6 +1,6 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Partials, Options } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -21,7 +21,16 @@ const client = new Client({
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildVoiceStates, // 👈 Ajouté pour détecter les entrées/sorties vocales
     ],
-    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+    makeCache: Options.cacheWithLimits({
+        MessageManager: 200, // garde jusqu'à 200 messages en cache par salon
+    }),
+    sweepers: {
+        messages: {
+            interval: 3600,  // vérifie le cache toutes les heures
+            lifetime: 7200,  // garde les messages en cache 2h avant de les libérer
+        },
+    },
 });
 
 // ─── SERVEUR HTTP (Health Check honnête, basé sur l'état réel du bot) ───

@@ -1,0 +1,90 @@
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const ReactionRole = require('../models/ReactionRole');
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('reactionrole-create')
+        .setDescription('🎭 Crée un message de rôles-réactions stylé')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+        .addStringOption(option =>
+            option.setName('titre')
+                .setDescription('Titre de l\'embed')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('Texte descriptif (utilise \\n pour les retours à la ligne)')
+                .setRequired(true))
+        .addChannelOption(option =>
+            option.setName('salon')
+                .setDescription('Salon où poster le message')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('couleur')
+                .setDescription('Couleur hex (ex: #FF2A7A). Par défaut rose Gurenkai')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('image')
+                .setDescription('URL d\'une image à afficher en bas de l\'embed')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('miniature')
+                .setDescription('URL d\'une miniature (icône en haut à droite)')
+                .setRequired(false))
+        .addBooleanOption(option =>
+            option.setName('exclusif')
+                .setDescription('Un seul rôle à la fois parmi ceux de ce message (par défaut: non)')
+                .setRequired(false)),
+
+    async execute(interaction) {
+        await interaction.deferReply({ ephemeral: true });
+
+        const titre = interaction.options.getString('titre');
+        const description = interaction.options.getString('description').replace(/\\n/g, '\n');
+        const salon = interaction.options.getChannel('salon');
+        const couleur = interaction.options.getString('couleur') || '#FF2A7A';
+        const image = interaction.options.getString('image');
+        const miniature = interaction.options.getString('miniature');
+        const exclusif = interaction.options.getBoolean('exclusif') || false;
+
+        if (!salon.isTextBased()) {
+            return interaction.editReply({ content: '❌ Le salon choisi doit être un salon textuel.' });
+        }
+
+        if (couleur && !/^#[0-9A-F]{6}$/i.test(couleur)) {
+            return interaction.editReply({ content: '❌ Couleur invalide. Utilise un format hex comme `#FF2A7A`.' });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(titre)
+            .setDescription(description)
+            .setColor(couleur)
+            .setFooter({ text: 'Gurenkai • Rôles par réaction' })
+            .setTimestamp();
+
+        if (image?.startsWith('http')) embed.setImage(image);
+        if (miniature?.startsWith('http')) embed.setThumbnail(miniature);
+
+        try {
+            const sentMessage = await salon.send({ embeds: [embed] });
+
+            await ReactionRole.create({
+                messageId: sentMessage.id,
+                channelId: salon.id,
+                guildId: interaction.guild.id,
+                exclusive: exclusif,
+                bindings: []
+            });
+
+            return interaction.editReply({
+                content: `✅ Message créé dans ${salon} !\n\n` +
+                    `**ID du message :** \`${sentMessage.id}\`\n` +
+                    `Utilise \`/reactionrole-bind\` avec cet ID pour associer des emojis à des rôles.\n` +
+                    (exclusif ? `⚠️ Mode **exclusif** activé : un membre ne pourra avoir qu'un seul rôle à la fois parmi ceux de ce message.` : '')
+            });
+
+        } catch (err) {
+            console.error('❌ Erreur création reaction role :', err);
+            return interaction.editReply({ content: '❌ Impossible de créer le message (vérifie les permissions du bot dans ce salon).' });
+        }
+    }
+};
