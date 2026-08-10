@@ -7,6 +7,11 @@ const ReactionRole = require('../models/ReactionRole');
 
 // 1. Bouton temporaire cliqué dans le salon -> Ouverture du menu éphémère
 async function handleSetupButton(interaction) {
+    // 🗑️ Supprime immédiatement le message d'alerte du salon
+    if (interaction.message && interaction.message.deletable) {
+        interaction.message.delete().catch(() => null);
+    }
+
     const [prefix, rest] = interaction.customId.split('::');
     const messageId = prefix.replace('rr_setup_', '');
     const emojiKey = decodeURIComponent(rest);
@@ -71,11 +76,6 @@ async function handleRoleSelect(interaction) {
 
         rr.bindings.push({ emoji: emojiKey, roleId });
         await rr.save();
-
-        // Supprimer le message contenant le bouton temporaire dans le salon
-        if (interaction.message && interaction.message.deletable) {
-            interaction.message.delete().catch(() => null);
-        }
 
         return interaction.update({
             content: `✅ L'émoji ${emojiKey} donne maintenant le rôle **${role.name}** !\n\nTu peux réagir avec un autre émoji sur le message pour continuer.`,

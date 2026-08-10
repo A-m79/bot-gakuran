@@ -1,4 +1,4 @@
-const { EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const ActivityCheck = require('../models/ActivityCheck');
 const ReactionRole = require('../models/ReactionRole');
 
@@ -13,7 +13,7 @@ module.exports = {
             if (reaction.partial) await reaction.fetch().catch(() => null);
             if (reaction.message.partial) await reaction.message.fetch().catch(() => null);
 
-            // ─── SYSTÈME 1 : ACTIVITY CHECK (uniquement sur l'emoji ✅) ───
+            // ─── SYSTÈME 1 : ACTIVITY CHECK ───
             if (reaction.emoji.name === '✅') {
                 if (processingChecks.has(reaction.message.id)) return;
                 processingChecks.add(reaction.message.id);
@@ -75,41 +75,66 @@ module.exports = {
                     const binding = rr.bindings.find(b => b.emoji === emojiKey);
 
                     if (binding) {
-                        // ── Cas normal : emoji déjà configuré → on donne le rôle ──
                         const member = await guild.members.fetch(user.id).catch(() => null);
-                        if (member) {
-                            if (rr.exclusive) {
-                                const otherRoleIds = rr.bindings
-                                    .filter(b => b.roleId !== binding.roleId)
-                                    .map(b => b.roleId);
+                        if (!member) return;
 
-                                const rolesToRemove = otherRoleIds.filter(id => member.roles.cache.has(id));
-                                if (rolesToRemove.length > 0) {
-                                    await member.roles.remove(rolesToRemove).catch(() => null);
+                        const newRole = await guild.roles.fetch(binding.roleId).catch(() => null);
+                        if (!newRole) return;
 
-                                    for (const b of rr.bindings.filter(b => b.roleId !== binding.roleId)) {
-                                        const otherReaction = reaction.message.reactions.cache.find(r => r.emoji.toString() === b.emoji);
-                                        if (otherReaction) await otherReaction.users.remove(user.id).catch(() => null);
-                                    }
+                        let removedRoleNames = [];
+
+                        // Mode exclusif : retrait des anciens rôles
+                        if (rr.exclusive) {
+                            const otherBindings = rr.bindings.filter(b => b.roleId !== binding.roleId);
+                            const otherRoleIds = otherBindings.map(b => b.roleId);
+
+                            const rolesToRemove = otherRoleIds.filter(id => member.roles.cache.has(id));
+
+                            if (rolesToRemove.length > 0) {
+                                for (const roleId of rolesToRemove) {
+                                    const roleObj = member.roles.cache.get(roleId);
+                                    if (roleObj) removedRoleNames.push(roleObj.name);
+                                }
+
+                                await member.roles.remove(rolesToRemove).catch(() => null);
+
+                                for (const b of otherBindings) {
+                                    const otherReaction = reaction.message.reactions.cache.find(r => r.emoji.toString() === b.emoji);
+                                    if (otherReaction) await otherReaction.users.remove(user.id).catch(() => null);
                                 }
                             }
+                        }
 
-                            if (!member.roles.cache.has(binding.roleId)) {
-                                await member.roles.add(binding.roleId).catch(err =>
-                                    console.error('❌ Erreur attribution rôle-réaction :', err)
-                                );
+                        // Attribution du nouveau rôle
+                        let roleAdded = false;
+                        if (!member.roles.cache.has(binding.roleId)) {
+                            await member.roles.add(binding.roleId).catch(err =>
+                                console.error('❌ Erreur attribution rôle-réaction :', err)
+                            );
+                            roleAdded = true;
+                        }
+
+                        // Notification par Message Privé (MP)
+                        if (roleAdded) {
+                            if (removedRoleNames.length > 0) {
+                                await user.send(
+                                    `🔄 Le rôle **${removedRoleNames.join(', ')}** vous a été retiré et le rôle **${newRole.name}** vous a été attribué sur **${guild.name}**.`
+                                ).catch(() => null);
+                            } else {
+                                await user.send(
+                                    `✅ Le rôle **${newRole.name}** vous a été attribué sur **${guild.name}**.`
+                                ).catch(() => null);
                             }
                         }
+
                     } else {
-                        // ── Emoji pas encore configuré ──
+                        // Emoji non configuré
                         const member = await guild.members.fetch(user.id).catch(() => null);
                         const isManager = member?.permissions.has(PermissionFlagsBits.ManageRoles);
 
                         if (isManager) {
-                            // Retirer la réaction de test de l'admin
                             await reaction.users.remove(user.id).catch(() => null);
 
-                            // Envoyer un bouton temporaire dans le salon textuel
                             const row = new ActionRowBuilder().addComponents(
                                 new ButtonBuilder()
                                     .setCustomId(`rr_setup_${reaction.message.id}::${encodeURIComponent(emojiKey)}`)
@@ -124,10 +149,9 @@ module.exports = {
                             }).catch(() => null);
 
                             if (promptMsg) {
-                                setTimeout(() => promptMsg.delete().catch(() => null), 120000);
+                                setTimeout(() => promptMsg.delete().catch(() => null), 15000); // Auto-suppression après 15 sec
                             }
                         } else {
-                            // Un membre normal a réagi avec un emoji non configuré : on retire
                             await reaction.users.remove(user.id).catch(() => null);
                         }
                     }
