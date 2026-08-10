@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require('discord.js');
 const ReactionRole = require('../models/ReactionRole');
 
 module.exports = {
@@ -23,7 +23,7 @@ module.exports = {
                 .setDescription('Couleur de l\'embed. Par défaut rose Gurenkai')
                 .setRequired(false)
                 .addChoices(
-                    { name: '🩷 Rose ', value: '#FF2A7A' },
+                    { name: '🩷 Rose Gurenkai', value: '#FF2A7A' },
                     { name: '🔴 Rouge', value: '#ED4245' },
                     { name: '🟠 Orange', value: '#E67E22' },
                     { name: '🟡 Jaune', value: '#F1C40F' },
@@ -89,11 +89,19 @@ module.exports = {
                 bindings: []
             });
 
+            const addButton = new ButtonBuilder()
+                .setCustomId(`rr_add_${sentMessage.id}`)
+                .setLabel('Ajouter une réaction')
+                .setEmoji('➕')
+                .setStyle(ButtonStyle.Primary);
+
+            const row = new ActionRowBuilder().addComponents(addButton);
+
             return interaction.editReply({
                 content: `✅ Message créé dans ${salon} !\n\n` +
-                    `**ID du message :** \`${sentMessage.id}\`\n` +
-                    `Utilise \`/reactionrole-bind\` avec cet ID pour associer des emojis à des rôles.\n` +
-                    (exclusif ? `⚠️ Mode **exclusif** activé : un membre ne pourra avoir qu'un seul rôle à la fois parmi ceux de ce message.` : '')
+                    `Clique sur le bouton ci-dessous pour associer des emojis à des rôles, aussi souvent que tu veux.\n` +
+                    (exclusif ? `⚠️ Mode **exclusif** activé : un membre ne pourra avoir qu'un seul rôle à la fois parmi ceux de ce message.` : ''),
+                components: [row]
             });
 
         } catch (err) {

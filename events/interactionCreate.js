@@ -177,6 +177,11 @@ module.exports = {
                 }
             }
 
+            // 🎭 REACTION ROLE : bouton "➕ Ajouter une réaction"
+            if (interaction.customId.startsWith('rr_add_')) {
+                return await handleAddButton(interaction);
+            }
+
             // 📩 CRÉATION DE TICKET
             if (interaction.customId === 'ticket_create') {
                 await interaction.deferReply({ ephemeral: true });
@@ -192,7 +197,7 @@ module.exports = {
                     const ticketChannel = await guild.channels.create({
                         name: `ticket-${member.user.username}`,
                         type: ChannelType.GuildText,
-                        parent: '1525302551627563098',
+                        parent: '1536318330145611827',
                         permissionOverwrites: [
                             {
                                 id: guild.roles.everyone.id,
@@ -391,8 +396,23 @@ module.exports = {
             return;
         }
 
-        // ─── 3. MODALS (FORMULAIRES) ───
+        // ─── 3. MENUS DÉROULANTS (SELECT MENUS) ───
+        if (interaction.isRoleSelectMenu()) {
+            // 🎭 REACTION ROLE : sélection du rôle à associer
+            if (interaction.customId.startsWith('rr_roleselect_')) {
+                return await handleRoleSelect(interaction);
+            }
+            return;
+        }
+
+        // ─── 4. MODALS (FORMULAIRES) ───
         if (interaction.isModalSubmit()) {
+
+            // 🎭 REACTION ROLE : soumission de l'emoji
+            if (interaction.customId.startsWith('rr_emoji_modal_')) {
+                return await handleEmojiModal(interaction);
+            }
+
             if (interaction.customId === 'soumettre_fiche_modal') {
                 const nom = interaction.fields.getTextInputValue('fiche_nom');
                 const style = interaction.fields.getTextInputValue('fiche_style');
