@@ -1,7 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const Giveaway = require('../models/Giveaway');
 const DisabledCommand = require('../models/DisabledCommand');
-const { handleAddButton, handleEmojiModal, handleRoleSelect } = require('../handlers/reactionRoleFlow');
+const { handleRoleSelect } = require('../handlers/reactionRoleFlow');
 
 module.exports = {
     name: 'interactionCreate',
@@ -176,11 +176,6 @@ module.exports = {
                 if (command && command.handleButton) {
                     return await command.handleButton(interaction);
                 }
-            }
-
-            // 🎭 REACTION ROLE : bouton "➕ Ajouter une réaction"
-            if (interaction.customId.startsWith('rr_add_')) {
-                return await handleAddButton(interaction);
             }
 
             // 📩 CRÉATION DE TICKET
@@ -408,11 +403,6 @@ module.exports = {
 
         // ─── 4. MODALS (FORMULAIRES) ───
         if (interaction.isModalSubmit()) {
-
-            // 🎭 REACTION ROLE : soumission de l'emoji
-            if (interaction.customId.startsWith('rr_emoji_modal_')) {
-                return await handleEmojiModal(interaction);
-            }
 
             if (interaction.customId === 'soumettre_fiche_modal') {
                 const nom = interaction.fields.getTextInputValue('fiche_nom');

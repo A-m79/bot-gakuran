@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const ReactionRole = require('../models/ReactionRole');
 
 module.exports = {
@@ -89,19 +89,11 @@ module.exports = {
                 bindings: []
             });
 
-            const addButton = new ButtonBuilder()
-                .setCustomId(`rr_add_${sentMessage.id}`)
-                .setLabel('Ajouter une réaction')
-                .setEmoji('➕')
-                .setStyle(ButtonStyle.Primary);
-
-            const row = new ActionRowBuilder().addComponents(addButton);
-
             return interaction.editReply({
                 content: `✅ Message créé dans ${salon} !\n\n` +
-                    `Clique sur le bouton ci-dessous pour associer des emojis à des rôles, aussi souvent que tu veux.\n` +
-                    (exclusif ? `⚠️ Mode **exclusif** activé : un membre ne pourra avoir qu'un seul rôle à la fois parmi ceux de ce message.` : ''),
-                components: [row]
+                    `**Pour associer des rôles :** réagis directement sur le message ci-dessus avec l'emoji de ton choix (clique sur l'icône réaction du message, comme sur n'importe quel message Discord). Tu recevras ensuite un MP pour choisir le rôle à associer.\n\n` +
+                    `Répète l'opération pour chaque emoji que tu veux ajouter.\n` +
+                    (exclusif ? `\n⚠️ Mode **exclusif** activé : un membre ne pourra avoir qu'un seul rôle à la fois parmi ceux de ce message.` : '')
             });
 
         } catch (err) {
