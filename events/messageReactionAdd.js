@@ -1,4 +1,4 @@
-const { EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder, PermissionFlagsBits } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const ActivityCheck = require('../models/ActivityCheck');
 const ReactionRole = require('../models/ReactionRole');
 
@@ -106,26 +106,28 @@ module.exports = {
                         const isManager = member?.permissions.has(PermissionFlagsBits.ManageRoles);
 
                         if (isManager) {
-                            // Un admin vient de réagir pour CONFIGURER cet emoji : on retire sa réaction de test
-                            // et on lui envoie en MP un menu pour choisir le rôle à associer.
+                            // Retirer la réaction de test de l'admin
                             await reaction.users.remove(user.id).catch(() => null);
 
-                            const roleSelect = new RoleSelectMenuBuilder()
-                                .setCustomId(`rr_roleselect_${reaction.message.id}::${encodeURIComponent(emojiKey)}`)
-                                .setPlaceholder('Choisis le rôle à associer')
-                                .setMinValues(1)
-                                .setMaxValues(1);
+                            // Envoyer un bouton temporaire dans le salon textuel
+                            const row = new ActionRowBuilder().addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(`rr_setup_${reaction.message.id}::${encodeURIComponent(emojiKey)}`)
+                                    .setLabel(`Associer un rôle à ${reaction.emoji.name}`)
+                                    .setStyle(ButtonStyle.Primary)
+                                    .setEmoji(reaction.emoji.id || reaction.emoji.name)
+                            );
 
-                            const row = new ActionRowBuilder().addComponents(roleSelect);
-
-                            await user.send({
-                                content: `Tu as réagi avec ${emojiKey} sur le message de rôles-réactions.\nChoisis le rôle à associer à cet emoji :`,
+                            const promptMsg = await reaction.message.channel.send({
+                                content: `⚙️ ${user}, clique sur le bouton ci-dessous pour choisir le rôle à associer à l'émoji ${emojiKey} :`,
                                 components: [row]
-                            }).catch(() => {
-                                console.warn(`⚠️ Impossible d'envoyer un MP à ${user.tag} pour la config reaction-role (MP fermés ?).`);
-                            });
+                            }).catch(() => null);
+
+                            if (promptMsg) {
+                                setTimeout(() => promptMsg.delete().catch(() => null), 120000);
+                            }
                         } else {
-                            // Un membre normal a réagi avec un emoji non configuré : on retire, ça ne sert à rien
+                            // Un membre normal a réagi avec un emoji non configuré : on retire
                             await reaction.users.remove(user.id).catch(() => null);
                         }
                     }

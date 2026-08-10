@@ -1,7 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const Giveaway = require('../models/Giveaway');
 const DisabledCommand = require('../models/DisabledCommand');
-const { handleRoleSelect } = require('../handlers/reactionRoleFlow');
+const { handleSetupButton, handleRoleSelect } = require('../handlers/reactionRoleFlow');
 
 module.exports = {
     name: 'interactionCreate',
@@ -74,6 +74,11 @@ module.exports = {
 
         // ─── 2. BOUTONS ───
         if (interaction.isButton()) {
+
+            // 🎭 REACTION ROLE : bouton d'initialisation du rôle
+            if (interaction.customId.startsWith('rr_setup_')) {
+                return await handleSetupButton(interaction);
+            }
 
             // 🔓 DÉBANNIR UN MODÉRATEUR / BOT / MEMBRE (unban_ & antinuke_unban_)
             if (interaction.customId.startsWith('antinuke_unban_') || interaction.customId.startsWith('unban_')) {

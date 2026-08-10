@@ -91,7 +91,7 @@ module.exports = {
 
             return interaction.editReply({
                 content: `✅ Message créé dans ${salon} !\n\n` +
-                    `**Pour associer des rôles :** réagis directement sur le message ci-dessus avec l'emoji de ton choix (clique sur l'icône réaction du message, comme sur n'importe quel message Discord). Tu recevras ensuite un MP pour choisir le rôle à associer.\n\n` +
+                    `**Pour associer des rôles :** réagis directement sur le message ci-dessus avec l'emoji de ton choix (clique sur l'icône réaction du message). Un bouton temporaire apparaîtra dans le salon pour te permettre de choisir le rôle en toute confidentialité.\n\n` +
                     `Répète l'opération pour chaque emoji que tu veux ajouter.\n` +
                     (exclusif ? `\n⚠️ Mode **exclusif** activé : un membre ne pourra avoir qu'un seul rôle à la fois parmi ceux de ce message.` : '')
             });
