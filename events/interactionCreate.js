@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const Giveaway = require('../models/Giveaway');
 const DisabledCommand = require('../models/DisabledCommand');
+const { handleAddButton, handleEmojiModal, handleRoleSelect } = require('../handlers/reactionRoleFlow');
 
 module.exports = {
     name: 'interactionCreate',
