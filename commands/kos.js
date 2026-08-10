@@ -5,15 +5,21 @@ const Kos = require('../models/Kos');
 function buildEmbed(entries) {
     const embed = new EmbedBuilder()
         .setTitle('🎯 KILL ON SIGHT — Gurenkai')
-        .setColor('#CC0000')
+        .setColor('#FF0000')
         .setThumbnail('attachment://logo.png')
-        .setFooter({ text: `Gurenkai • ${entries.length} cible(s)` })
+        .setFooter({ text: `Gurenkai • ${entries.length} cible(s) active(s)` })
         .setTimestamp();
 
-    embed.setDescription(entries.length === 0
-        ? '> ✅ Aucune cible sur la liste KOS.'
-        : `**⚠️ Ces individus sont à éliminer à vue.**\n\n${entries.map((e, i) => `**${i+1}.** \`${e.nom}\`\n┗ *${e.raison}* — Ajouté par ${e.addedBy}`).join('\n\n')}`
-    );
+    if (!entries || entries.length === 0) {
+        embed.setDescription('> ✅ **Personne est sur la liste KOS.**');
+        return embed;
+    }
+
+    const formattedList = entries.map((e, i) => 
+        `**${i + 1}.** **\`${e.nom}\`**\n┗ 💬 *${e.raison}* — *(Ajouté par ${e.addedBy})*`
+    ).join('\n\n');
+
+    embed.setDescription(`⚠️ **Ces personnes/gangs sont à kill à vue :**\n\n${formattedList}`);
     return embed;
 }
 
@@ -23,14 +29,14 @@ module.exports = {
         .setDescription('🎯 Gérer la liste Kill On Sight')
         .addSubcommand(sub => sub
             .setName('ajouter')
-            .setDescription('Ajouter une cible')
-            .addStringOption(opt => opt.setName('nom').setDescription('Nom de la cible').setRequired(true))
+            .setDescription('Ajouter ou modifier une cible KOS')
+            .addStringOption(opt => opt.setName('nom').setDescription('Nom du joueur ou du groupe').setRequired(true))
             .addStringOption(opt => opt.setName('raison').setDescription('Raison du KOS').setRequired(true))
         )
         .addSubcommand(sub => sub
             .setName('retirer')
-            .setDescription('Retirer une cible')
-            .addStringOption(opt => opt.setName('nom').setDescription('Nom exact à retirer').setRequired(true))
+            .setDescription('Retirer une cible de la liste')
+            .addStringOption(opt => opt.setName('nom').setDescription('Nom exact de la cible à retirer').setRequired(true))
         ),
 
     async execute(interaction) {
@@ -41,7 +47,6 @@ module.exports = {
 
         const sub = interaction.options.getSubcommand();
         
-        // Récupération ou initialisation du document KOS unique dans MongoDB
         let kosData = await Kos.findOne();
         if (!kosData) {
             kosData = new Kos({ messageId: null, entries: [] });
@@ -51,10 +56,14 @@ module.exports = {
             const nom = interaction.options.getString('nom');
             const raison = interaction.options.getString('raison');
             
-            if (kosData.entries.find(e => e.nom.toLowerCase() === nom.toLowerCase()))
-                return interaction.editReply({ content: `❌ **${nom}** est déjà sur la liste KOS.` });
-            
-            kosData.entries.push({ nom, raison, addedBy: interaction.user.username, addedAt: new Date() });
+            const existingIdx = kosData.entries.findIndex(e => e.nom.toLowerCase() === nom.toLowerCase());
+            if (existingIdx !== -1) {
+                kosData.entries[existingIdx].raison = raison;
+                kosData.entries[existingIdx].addedBy = interaction.user.username;
+                kosData.entries[existingIdx].addedAt = new Date();
+            } else {
+                kosData.entries.push({ nom, raison, addedBy: interaction.user.username, addedAt: new Date() });
+            }
         } else {
             const nom = interaction.options.getString('nom');
             const idx = kosData.entries.findIndex(e => e.nom.toLowerCase() === nom.toLowerCase());
@@ -63,6 +72,9 @@ module.exports = {
             
             kosData.entries.splice(idx, 1);
         }
+
+        // Forcer Mongoose à enregistrer les modifications
+        kosData.markModified('entries');
 
         const embed = buildEmbed(kosData.entries);
         const logo = new AttachmentBuilder(path.join(__dirname, '..', 'logo.png'), { name: 'logo.png' });
@@ -83,7 +95,7 @@ module.exports = {
             }
             
             await kosData.save();
-            await interaction.editReply({ content: `✅ Liste KOS mise à jour.` });
+            await interaction.editReply({ content: `✅ Liste KOS mise à jour avec succès.` });
         } catch (e) {
             console.error('[KOS]', e);
             await interaction.editReply({ content: '❌ Erreur lors de la mise à jour.' });

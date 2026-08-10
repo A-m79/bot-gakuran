@@ -1,3 +1,13 @@
 const mongoose = require('mongoose');
 
-module.exports = mongoose.model('Kos', new mongoose.Schema({}, { strict: false }));
+const kosSchema = new mongoose.Schema({
+    messageId: { type: String, default: null },
+    entries: [{
+        nom: { type: String, required: true },
+        raison: { type: String, required: true },
+        addedBy: { type: String, default: '' },
+        addedAt: { type: Date, default: Date.now }
+    }]
+}, { timestamps: true });
+
+module.exports = mongoose.model('Kos', kosSchema);
