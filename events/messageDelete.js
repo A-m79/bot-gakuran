@@ -39,7 +39,10 @@ module.exports = {
         }
 
         // 3️⃣ Recherche dans l'Audit Log (Modérateur qui a supprimé)
-        let deletedBy = '👤 L\'auteur *(ou suppression auto)*';
+        // Si aucun log d'audit n'existe, c'est obligatoirement l'auteur lui-même
+        let deletedBy = targetAuthorId 
+            ? `<@${targetAuthorId}> *(L'auteur lui-même)*` 
+            : '👤 L\'auteur du message';
 
         await new Promise(resolve => setTimeout(resolve, 2000));
 
