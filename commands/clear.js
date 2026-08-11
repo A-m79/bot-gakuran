@@ -31,7 +31,6 @@ module.exports = {
 
         try {
             const messages = await interaction.channel.messages.fetch({ limit: cible ? 100 : nombre });
-
             let toDelete = [...messages.values()];
 
             if (cible) {
@@ -103,8 +102,8 @@ async function logClearAction(interaction, capturedMessages, supprimés, cible) 
 
     const extraCount = sortedBreakdown.length > 10 ? `\n*+ ${sortedBreakdown.length - 10} autre(s) auteur(s)*` : '';
 
-    // 📄 Génère le transcript et le garde en mémoire (pas envoyé directement dans le salon)
-    let transcriptText = `--- TRANSCRIPT DE SUPPRESSION MASSIVE ---\n`;
+    // 📄 Génère le transcript TXT
+    let transcriptText = `--- TRANSCRIPT DE CLEAR ---\n`;
     transcriptText += `Salon : #${interaction.channel.name}\n`;
     transcriptText += `Modérateur : ${interaction.user.tag} (${interaction.user.id})\n`;
     transcriptText += `Date : ${new Date().toLocaleString('fr-FR')}\n`;
@@ -138,16 +137,16 @@ async function logClearAction(interaction, capturedMessages, supprimés, cible) 
     const row = new ActionRowBuilder().addComponents(downloadButton);
 
     const embed = new EmbedBuilder()
-        .setTitle('🗑️ Suppression Massive de Messages')
+        .setTitle("🗑️ Logs de l'utilisation d'un /clear")
         .setColor('#FF9900')
         .addFields(
             { name: '🛡️ Modérateur', value: `${interaction.user} (\`${interaction.user.id}\`)`, inline: true },
             { name: '📍 Salon', value: `${interaction.channel}`, inline: true },
-            { name: '🔢 Total supprimé', value: `${supprimés} message(s)`, inline: true },
+            { name: '🔢 Total de msg supprimé', value: `${supprimés} message(s)`, inline: true },
             ...(cible ? [{ name: '🎯 Suppression ciblée', value: `Uniquement les messages de ${cible}`, inline: false }] : []),
-            { name: '📊 Détail par auteur des messages supprimés', value: breakdownText + extraCount, inline: false }
+            { name: '📊 Détail par membres des messages supprimés', value: breakdownText + extraCount, inline: false }
         )
-        .setFooter({ text: 'Gurenkai Security • Le bouton expire après 15 minutes' })
+        .setFooter({ text: 'Gurenkai Security • Le bouton expire après 3 heures' })
         .setTimestamp();
 
     await logChannel.send({ embeds: [embed], components: [row] }).catch(err =>
