@@ -1,33 +1,44 @@
 const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const LoggedMessage = require('../models/LoggedMessage');
 
-// Stockage temporaire des messages pour l'anti-spam/flood
 const userMessageMap = new Map();
-
-const SPAM_LIMIT = 5;          // Nombre max de messages
-const SPAM_TIME_WINDOW = 3000; // Dans une fenêtre de 3 secondes (3000 ms)
-const MUTE_DURATION = 5 * 60 * 1000; // Timeout de 5 minutes en cas de flood répétitif
+const SPAM_LIMIT = 5;
+const SPAM_TIME_WINDOW = 3000;
+const MUTE_DURATION = 5 * 60 * 1000;
 
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
-        // Ignorer les bots et les MPs
         if (message.author.bot || !message.guild) return;
+
+        // 💾 Sauvegarde automatique dans MongoDB
+        try {
+            await LoggedMessage.create({
+                messageId: message.id,
+                channelId: message.channel.id,
+                guildId: message.guild.id,
+                authorId: message.author.id,
+                authorTag: message.author.tag,
+                content: message.content || '',
+                attachments: message.attachments.map(a => a.url)
+            });
+        } catch (e) {
+            // Ignore les erreurs de doublons d'index
+        }
 
         const member = message.member;
         if (!member) return;
 
-        // Le Staff / Admins / Rôle "bot info" passe outre ces restrictions
         const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages) || 
                         member.permissions.has(PermissionFlagsBits.Administrator) ||
                         member.roles.cache.some(r => r.name.toLowerCase() === 'bot info');
 
         if (isStaff) return;
 
-        // Récupération du salon de logs de sécurité
         const logChannelId = process.env.SECURITY_LOGS_CHANNEL_ID?.trim();
         const logChannel = logChannelId ? await message.guild.channels.fetch(logChannelId).catch(() => null) : null;
 
-        // ─── 1. ANTI-INVITE DISCORD & LIENS SUSPECTS ───
+        // ─── 1. ANTI-INVITE DISCORD ───
         const discordInviteRegex = /(discord\.(gg|io|me|li)|discord\.com\/invite)\/.+/i;
         if (discordInviteRegex.test(message.content)) {
             await message.delete().catch(() => null);
@@ -69,22 +80,16 @@ module.exports = {
         const userTimestamps = userMessageMap.get(userId);
         userTimestamps.push(now);
 
-        // Garder seulement les messages envoyés dans la fenêtre définie
         const recentTimestamps = userTimestamps.filter(t => now - t < SPAM_TIME_WINDOW);
         userMessageMap.set(userId, recentTimestamps);
 
         if (recentTimestamps.length >= SPAM_LIMIT) {
-            // Supprimer le dernier message
             await message.delete().catch(() => null);
-
-            // Sanction : Timeout de 5 minutes
             await member.timeout(MUTE_DURATION, 'Spam / Flood automatique détecté par le bot').catch(() => null);
 
-            // Message d'avertissement dans le salon
             const spamWarn = await message.channel.send(`⛔ ${message.author} a été réduit au silence pendant **5 minutes** pour spam/flood.`);
             setTimeout(() => spamWarn.delete().catch(() => null), 6000);
 
-            // Reset du compteur pour cet utilisateur
             userMessageMap.delete(userId);
 
             if (logChannel) {
