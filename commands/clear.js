@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const transcriptCache = require('../utils/transcriptCache');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -29,12 +30,10 @@ module.exports = {
         const cible  = interaction.options.getUser('membre');
 
         try {
-            // Récupérer les messages
             const messages = await interaction.channel.messages.fetch({ limit: cible ? 100 : nombre });
 
             let toDelete = [...messages.values()];
 
-            // Filtrer par membre si précisé
             if (cible) {
                 toDelete = toDelete.filter(m => m.author.id === cible.id).slice(0, nombre);
             }
@@ -43,11 +42,8 @@ module.exports = {
                 return interaction.editReply({ content: '⚠️ Aucun message à supprimer avec ces critères.' });
             }
 
-            // 📋 On capture le contenu AVANT suppression, pour le log + le transcript
-            // (tri chronologique croissant pour que le transcript se lise naturellement)
             const capturedMessages = [...toDelete].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
-            // Discord ne peut supprimer en masse que les msgs de moins de 14 jours
             const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
             const recent = toDelete.filter(m => m.createdTimestamp > cutoff);
             const old    = toDelete.filter(m => m.createdTimestamp <= cutoff);
@@ -64,7 +60,6 @@ module.exports = {
                 }
             }
 
-            // Supprimer les vieux messages un par un
             for (const msg of old) {
                 await msg.delete().catch(() => null);
                 supprimés++;
@@ -76,7 +71,6 @@ module.exports = {
 
             await interaction.editReply({ content: txt });
 
-            // ─── 📊 LOG DÉTAILLÉ + TRANSCRIPT ───
             await logClearAction(interaction, capturedMessages, supprimés, cible);
 
         } catch (e) {
@@ -93,7 +87,7 @@ async function logClearAction(interaction, capturedMessages, supprimés, cible) 
     if (!logChannel) return;
 
     // 📊 Répartition par auteur
-    const breakdown = new Map(); // authorId -> { tag, count }
+    const breakdown = new Map();
     for (const msg of capturedMessages) {
         const authorId = msg.author?.id || 'unknown';
         const tag = msg.author?.tag || 'Auteur inconnu';
@@ -103,13 +97,13 @@ async function logClearAction(interaction, capturedMessages, supprimés, cible) 
 
     const sortedBreakdown = [...breakdown.values()].sort((a, b) => b.count - a.count);
     const breakdownText = sortedBreakdown
-        .slice(0, 10) // évite un embed trop long si beaucoup d'auteurs différents
-        .map(b => `• **${b.tag}** — ${b.count} message(s)`)
+        .slice(0, 10)
+        .map(b => `• **${b.tag}** : ${b.count} message(s) supprimé(s)`)
         .join('\n') || 'Aucune donnée';
 
     const extraCount = sortedBreakdown.length > 10 ? `\n*+ ${sortedBreakdown.length - 10} autre(s) auteur(s)*` : '';
 
-    // 📄 Transcript téléchargeable
+    // 📄 Génère le transcript et le garde en mémoire (pas envoyé directement dans le salon)
     let transcriptText = `--- TRANSCRIPT DE SUPPRESSION MASSIVE ---\n`;
     transcriptText += `Salon : #${interaction.channel.name}\n`;
     transcriptText += `Modérateur : ${interaction.user.tag} (${interaction.user.id})\n`;
@@ -131,7 +125,17 @@ async function logClearAction(interaction, capturedMessages, supprimés, cible) 
 
     const buffer = Buffer.from(transcriptText, 'utf-8');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const attachment = new AttachmentBuilder(buffer, { name: `clear-${interaction.channel.name}-${timestamp}.txt` });
+    const filename = `clear-${interaction.channel.name}-${timestamp}.txt`;
+
+    const transcriptId = transcriptCache.store(buffer, filename);
+
+    const downloadButton = new ButtonBuilder()
+        .setCustomId(`clear_transcript_${transcriptId}`)
+        .setLabel('Télécharger le transcript (MP)')
+        .setEmoji('📥')
+        .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder().addComponents(downloadButton);
 
     const embed = new EmbedBuilder()
         .setTitle('🗑️ Suppression Massive de Messages')
@@ -140,13 +144,13 @@ async function logClearAction(interaction, capturedMessages, supprimés, cible) 
             { name: '🛡️ Modérateur', value: `${interaction.user} (\`${interaction.user.id}\`)`, inline: true },
             { name: '📍 Salon', value: `${interaction.channel}`, inline: true },
             { name: '🔢 Total supprimé', value: `${supprimés} message(s)`, inline: true },
-            ...(cible ? [{ name: '🎯 Filtré sur', value: `${cible}`, inline: true }] : []),
-            { name: '📊 Répartition par auteur', value: breakdownText + extraCount, inline: false }
+            ...(cible ? [{ name: '🎯 Suppression ciblée', value: `Uniquement les messages de ${cible}`, inline: false }] : []),
+            { name: '📊 Détail par auteur des messages supprimés', value: breakdownText + extraCount, inline: false }
         )
-        .setFooter({ text: 'Gurenkai Security • Log de modération' })
+        .setFooter({ text: 'Gurenkai Security • Le bouton expire après 15 minutes' })
         .setTimestamp();
 
-    await logChannel.send({ embeds: [embed], files: [attachment] }).catch(err =>
+    await logChannel.send({ embeds: [embed], components: [row] }).catch(err =>
         console.error('❌ Erreur envoi log clear :', err)
     );
 }

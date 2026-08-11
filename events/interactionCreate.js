@@ -2,6 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder
 const Giveaway = require('../models/Giveaway');
 const DisabledCommand = require('../models/DisabledCommand');
 const { handleSetupButton, handleRoleSelect } = require('../handlers/reactionRoleFlow');
+const transcriptCache = require('../utils/transcriptCache');
 
 module.exports = {
     name: 'interactionCreate',
@@ -78,6 +79,36 @@ module.exports = {
             // 🎭 REACTION ROLE : bouton d'initialisation du rôle
             if (interaction.customId.startsWith('rr_setup_')) {
                 return await handleSetupButton(interaction);
+            }
+
+            // 📥 TÉLÉCHARGEMENT TRANSCRIPT /clear (envoi en MP)
+            if (interaction.customId.startsWith('clear_transcript_')) {
+                const authorizedRoles = process.env.AUTHORIZED_ROLE_IDS?.split(',').map(id => id.trim()) || [];
+                const hasAccess = interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)
+                    || interaction.member.roles.cache.some(r => authorizedRoles.includes(r.id));
+
+                if (!hasAccess) {
+                    return interaction.reply({ content: "❌ Tu n'as pas la permission de télécharger ce transcript.", ephemeral: true });
+                }
+
+                await interaction.deferReply({ ephemeral: true });
+
+                const transcriptId = interaction.customId.replace('clear_transcript_', '');
+                const entry = transcriptCache.retrieve(transcriptId);
+
+                if (!entry) {
+                    return interaction.editReply({ content: '❌ Ce transcript a expiré (disponible seulement 15 minutes après la suppression).' });
+                }
+
+                const attachment = new AttachmentBuilder(entry.buffer, { name: entry.filename });
+
+                try {
+                    await interaction.user.send({ content: '📄 Voici le transcript demandé :', files: [attachment] });
+                    await interaction.editReply({ content: '✅ Transcript envoyé en MP !' });
+                } catch (err) {
+                    await interaction.editReply({ content: "❌ Impossible de t'envoyer le MP (vérifie que tes MP sont ouverts pour ce serveur)." });
+                }
+                return;
             }
 
             // 🔓 DÉBANNIR UN MODÉRATEUR / BOT / MEMBRE (unban_ & antinuke_unban_)
