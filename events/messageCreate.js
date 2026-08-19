@@ -1,17 +1,13 @@
 const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const LoggedMessage = require('../models/LoggedMessage');
 
-const userMessageMap = new Map();
-const SPAM_LIMIT = 5;
-const SPAM_TIME_WINDOW = 3000;
-const MUTE_DURATION = 5 * 60 * 1000;
-
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
         if (message.author.bot || !message.guild) return;
 
-        // 💾 Sauvegarde automatique dans MongoDB
+        // 💾 Sauvegarde automatique dans MongoDB (utilisée par messageDelete.js
+        // pour retrouver le contenu d'un message supprimé non mis en cache)
         try {
             await LoggedMessage.create({
                 messageId: message.id,
@@ -39,6 +35,7 @@ module.exports = {
         const logChannel = logChannelId ? await message.guild.channels.fetch(logChannelId).catch(() => null) : null;
 
         // ─── 1. ANTI-INVITE DISCORD ───
+        // (Non géré par Lotus, on garde cette partie)
         const discordInviteRegex = /(discord\.(gg|io|me|li)|discord\.com\/invite)\/.+/i;
         if (discordInviteRegex.test(message.content)) {
             await message.delete().catch(() => null);
@@ -62,6 +59,7 @@ module.exports = {
         }
 
         // ─── 2. ANTI-PING EVERYONE / HERE ───
+        // (Non géré par Lotus, on garde cette partie)
         if (message.content.includes('@everyone') || message.content.includes('@here')) {
             await message.delete().catch(() => null);
             const warnMsg = await message.channel.send(`❌ ${message.author}, tu n'as pas la permission d'utiliser les pings généraux !`);
@@ -70,41 +68,7 @@ module.exports = {
         }
 
         // ─── 3. ANTI-SPAM & ANTI-FLOOD ───
-        const now = Date.now();
-        const userId = message.author.id;
-
-        if (!userMessageMap.has(userId)) {
-            userMessageMap.set(userId, []);
-        }
-
-        const userTimestamps = userMessageMap.get(userId);
-        userTimestamps.push(now);
-
-        const recentTimestamps = userTimestamps.filter(t => now - t < SPAM_TIME_WINDOW);
-        userMessageMap.set(userId, recentTimestamps);
-
-        if (recentTimestamps.length >= SPAM_LIMIT) {
-            await message.delete().catch(() => null);
-            await member.timeout(MUTE_DURATION, 'Spam / Flood automatique détecté par le bot').catch(() => null);
-
-            const spamWarn = await message.channel.send(`⛔ ${message.author} a été réduit au silence pendant **5 minutes** pour spam/flood.`);
-            setTimeout(() => spamWarn.delete().catch(() => null), 6000);
-
-            userMessageMap.delete(userId);
-
-            if (logChannel) {
-                const spamLogEmbed = new EmbedBuilder()
-                    .setTitle('⚡ Anti-Spam : Exclusion Temporaire (Timeout)')
-                    .setColor('#FF0000')
-                    .setDescription(`L'utilisateur ${message.author} a été rendu muet pour spam intensif.`)
-                    .addFields(
-                        { name: '👤 Sanctionné', value: `<@${userId}> (\`${userId}\`)`, inline: true },
-                        { name: '📍 Salon', value: `${message.channel}`, inline: true },
-                        { name: '⏱️ Durée', value: '5 minutes', inline: true }
-                    )
-                    .setTimestamp();
-                await logChannel.send({ embeds: [spamLogEmbed] }).catch(() => null);
-            }
-        }
+        // Retiré : géré par Lotus (antiSpam.js) pour éviter le double sanction
+        // sur le même serveur.
     }
 };
