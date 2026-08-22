@@ -27,6 +27,7 @@ module.exports = {
             // "fail-open" (Mongo indisponible = commande autorisée par
             // défaut) plutôt que de bloquer indéfiniment.
             try {
+                console.log('[FIX-CHECK v2] Passage dans le check DisabledCommand avec timeout 1.5s actif.');
                 const isDisabled = await Promise.race([
                     DisabledCommand.exists({ commandName: interaction.commandName }),
                     new Promise((_, reject) =>
