@@ -17,8 +17,22 @@ module.exports = {
             if (!command) return;
 
             // 🔒 VÉRIFICATION DES COMMANDES DÉSACTIVÉES (Via MongoDB)
+            // Fix (Unknown interaction 10062) : ce check tournait pour TOUTES
+            // les commandes, avant même command.execute() (donc avant son
+            // deferReply() interne). Si Mongo est lent/indisponible,
+            // Mongoose met la requête en "buffering" jusqu'à 10s — largement
+            // au-delà des 3s que Discord accorde pour accuser réception d'une
+            // interaction, qui expire alors (10062) avant même d'avoir tenté
+            // de répondre. On borne maintenant ce check à 1.5s et on
+            // "fail-open" (Mongo indisponible = commande autorisée par
+            // défaut) plutôt que de bloquer indéfiniment.
             try {
-                const isDisabled = await DisabledCommand.exists({ commandName: interaction.commandName });
+                const isDisabled = await Promise.race([
+                    DisabledCommand.exists({ commandName: interaction.commandName }),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Timeout vérification DisabledCommand (1.5s)')), 1500)
+                    ),
+                ]);
                 if (isDisabled) {
                     return interaction.reply({ 
                         content: `❌ La commande **/${interaction.commandName}** est actuellement désactivée par la direction.`, 
@@ -27,6 +41,7 @@ module.exports = {
                 }
             } catch (err) {
                 console.error('Erreur vérification MongoDB commandes désactivées:', err);
+                // On continue sans bloquer — voir commentaire ci-dessus.
             }
 
             try {

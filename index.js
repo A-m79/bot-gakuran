@@ -5,11 +5,6 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
-// ─── CONNEXION MONGODB ───
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('✅ Connected to MongoDB Atlas!'))
-    .catch(err => console.error('❌ MongoDB Connection Error:', err));
-
 // ─── CLIENT DISCORD ───
 const client = new Client({
     intents: [
@@ -121,4 +116,25 @@ process.on('uncaughtException', (err) => {
     console.error('❌ Exception non capturée :', err);
 });
 
-client.login(process.env.TOKEN);
+// ─── DÉMARRAGE ───
+// Fix (Unknown interaction 10062) : mongoose.connect() n'était jamais
+// attendu avant client.login() — le bot pouvait donc se connecter à Discord
+// et recevoir des interactions avant que Mongo soit prêt. La première
+// commande tombait alors dans le buffering Mongoose (10s d'attente) bien
+// au-delà des 3s que Discord accorde pour accuser réception. On attend
+// maintenant explicitement la connexion Mongo avant de se logger sur Discord.
+async function main() {
+    try {
+        await mongoose.connect(process.env.MONGODB_URI);
+        console.log('✅ Connected to MongoDB Atlas!');
+    } catch (err) {
+        console.error('❌ MongoDB Connection Error:', err);
+        // On ne bloque pas indéfiniment : le bot se connecte quand même à
+        // Discord (le filet de sécurité côté interactionCreate.js gère les
+        // requêtes Mongo indisponibles avec un timeout court).
+    }
+
+    await client.login(process.env.TOKEN);
+}
+
+main();
