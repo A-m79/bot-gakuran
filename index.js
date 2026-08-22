@@ -134,7 +134,23 @@ async function main() {
         // requêtes Mongo indisponibles avec un timeout court).
     }
 
-    await client.login(process.env.TOKEN);
+    // Fix (déploiement bloqué en "In Progress") : client.login() peut rester
+    // silencieusement bloqué sur Render (stall réseau Render↔Discord, sans
+    // event 'error'/'shardError' émis) — le health check /health dépend de
+    // client.isReady(), donc tant que login() ne résout pas, Render ne bascule
+    // JAMAIS le trafic sur ce déploiement et continue de servir l'ancien code
+    // indéfiniment. On borne login() à 30s : au-delà, le process plante fort
+    // et Render relance immédiatement au lieu d'attendre indéfiniment.
+    const LOGIN_TIMEOUT_MS = 30_000;
+    await Promise.race([
+        client.login(process.env.TOKEN),
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`client.login() n'a pas résolu en ${LOGIN_TIMEOUT_MS / 1000}s`)), LOGIN_TIMEOUT_MS)
+        ),
+    ]);
 }
 
-main();
+main().catch((err) => {
+    console.error('❌ Erreur fatale au démarrage :', err);
+    process.exit(1);
+});
